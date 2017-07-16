@@ -24,14 +24,22 @@ docker run \
 -p 25151:25151 \
 --name cobbler cobbler
 
+distro_signatures.json
+distro_signatures.json
+
+
 mount -t iso9660 -o loop,ro -v dist/CentOS-7-x86_64-Minimal-1611.iso dist/centos
 mount -t iso9660 -o loop,ro -v dist/CentOS-6.9-x86_64-minimal.iso dist/centos
 mount -t iso9660 -o loop,ro -v dist/VMware-VMvisor-Installer-6.0.0.update01-3029758.x86_64.iso dist/centos
-
-
-docker exec -it cobbler cobbler import --name=centos6 --arch=x86_64 --path=/mnt
-docker exec -it cobbler cobbler import --name=exsi6 --arch=x86_64 --path=/mnt
+docker restart cobbler
+docker exec -it cobbler cobbler import --name=exsi6.0 --arch=x86_64 --path=/mnt
+mount -t iso9660 -o loop,ro -v dist/VMware-VMvisor-Installer-6.5.0-4564106.x86_64.iso dist/centos
+docker restart cobbler
+docker exec -it cobbler cobbler import --name=exsi6.5 --arch=x86_64 --path=/mnt
 
 添加一台机器的系统安装，机器的mac为00:50:56:83:70:ea，设置机器的ip为192.161.17.141 host1 gw:192.161.17.1
 cobbler system add --name=testvm1 --profile=centos7-x86_64 --mac=00:50:56:83:70:ea --interface=eth0 --ip-address=192.161.17.141 --hostname=testvm1 --gateway=192.161.17.1 \
 --dns-name=testvm1 --static=1 --ip-address=192.161.17.141
+
+http://%s/cblr/svc/op/trig/mode/pre/%s/%s
+http://192.161.17.2/cblr/svc/op/trig/mode/pre/profile/esxi65-x86_64
