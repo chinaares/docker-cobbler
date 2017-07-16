@@ -1,0 +1,37 @@
+truncate -s 0 /var/lib/docker/containers/*/*-json.log
+
+
+export WORK_DIR=/root/docker-cobbler
+docker run \
+-d \
+--privileged \
+--net host \
+-v /sys/fs/cgroup:/sys/fs/cgroup:ro \
+-v ${WORK_DIR}/etc/cobbler/settings:/etc/cobbler/settings \
+-v ${WORK_DIR}/etc/cobbler/dhcp.template:/etc/cobbler/dhcp.template \
+-v ${WORK_DIR}/etc/cobbler/pxe/bootcfg_esxi65.template:/etc/cobbler/pxe/bootcfg_esxi65.template \
+-v ${WORK_DIR}/var/www/cobbler/images:/var/www/cobbler/images \
+-v ${WORK_DIR}/var/www/cobbler/ks_mirror:/var/www/cobbler/ks_mirror \
+-v ${WORK_DIR}/var/www/cobbler/links:/var/www/cobbler/links \
+-v ${WORK_DIR}/var/lib/cobbler/config:/var/lib/cobbler/config \
+-v ${WORK_DIR}/var/lib/cobbler/distro_signatures.json:/var/lib/cobbler/distro_signatures.json \
+-v ${WORK_DIR}/var/lib/cobbler/kickstarts/sample_esxi6.ks:/var/lib/cobbler/kickstarts/sample_esxi6.ks \
+-v ${WORK_DIR}/var/lib/tftpboot:/var/lib/tftpboot \
+-v ${WORK_DIR}/dist/centos:/mnt:ro \
+-p 69:69 \
+-p 80:80 \
+-p 443:443 \
+-p 25151:25151 \
+--name cobbler cobbler
+
+mount -t iso9660 -o loop,ro -v dist/CentOS-7-x86_64-Minimal-1611.iso dist/centos
+mount -t iso9660 -o loop,ro -v dist/CentOS-6.9-x86_64-minimal.iso dist/centos
+mount -t iso9660 -o loop,ro -v dist/VMware-VMvisor-Installer-6.0.0.update01-3029758.x86_64.iso dist/centos
+
+
+docker exec -it cobbler cobbler import --name=centos6 --arch=x86_64 --path=/mnt
+docker exec -it cobbler cobbler import --name=exsi6 --arch=x86_64 --path=/mnt
+
+添加一台机器的系统安装，机器的mac为00:50:56:83:70:ea，设置机器的ip为192.161.17.141 host1 gw:192.161.17.1
+cobbler system add --name=testvm1 --profile=centos7-x86_64 --mac=00:50:56:83:70:ea --interface=eth0 --ip-address=192.161.17.141 --hostname=testvm1 --gateway=192.161.17.1 \
+--dns-name=testvm1 --static=1 --ip-address=192.161.17.141
