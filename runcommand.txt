@@ -1,3 +1,5 @@
+docker build -t cobbler .
+
 truncate -s 0 /var/lib/docker/containers/*/*-json.log
 
 
@@ -24,9 +26,9 @@ docker run \
 -p 25151:25151 \
 --name cobbler cobbler
 
-distro_signatures.json
-distro_signatures.json
+https://localhost/cobbler_web
 
+# docker exec -it cobbler bash
 
 mount -t iso9660 -o loop,ro -v dist/CentOS-7-x86_64-Minimal-1611.iso dist/centos
 mount -t iso9660 -o loop,ro -v dist/CentOS-6.9-x86_64-minimal.iso dist/centos
