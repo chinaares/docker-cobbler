@@ -13,14 +13,17 @@ rm -f /lib/systemd/system/anaconda.target.wants/*;
 VOLUME [ "/sys/fs/cgroup" ]
 
 RUN yum -y install epel-release
-RUN yum -y install cobbler cobbler-web dhcp bind syslinux pykickstart xinetd initscripts which wget file net-tools cman 
-#debmirror
+RUN yum -y install cobbler cobbler-web dhcp bind syslinux pykickstart xinetd initscripts which wget file net-tools debmirror
 
 RUN systemctl enable cobblerd httpd dhcpd rsyncd xinetd
 
 # enable tftp
 RUN sed -i -e 's/\(^.*disable.*=\) yes/\1 no/' /etc/xinetd.d/tftp
 RUN sed -i 's/#ServerName www.example.com:80/ServerName 127.0.0.1:80/' /etc/httpd/conf/httpd.conf
+
+# settings debmirror
+RUN sed -i -e 's|@dists=.*|#@dists=|'  /etc/debmirror.conf
+RUN sed -i -e 's|@arches=.*|#@arches=|'  /etc/debmirror.conf
 
 # create rsync file
 RUN touch /etc/xinetd.d/rsync
