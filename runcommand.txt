@@ -27,21 +27,37 @@ docker run \
 --name cobbler cobbler
 
 https://localhost/cobbler_web
-
+# docker exec -it cobbler cobbler check
+# docker exec -it cobbler cobbler get-loaders
+# docker exec -it cobbler cobbler sync
 # docker exec -it cobbler bash
 
-mount -t iso9660 -o loop,ro -v dist/CentOS-7-x86_64-Minimal-1611.iso dist/centos
-mount -t iso9660 -o loop,ro -v dist/CentOS-6.9-x86_64-minimal.iso dist/centos
-mount -t iso9660 -o loop,ro -v dist/VMware-VMvisor-Installer-6.0.0.update01-3029758.x86_64.iso dist/centos
+mount -t iso9660 -o loop,ro -v ~/CentOS-7-x86_64-Minimal-1611.iso dist/centos
+mount -t iso9660 -o loop,ro -v ~/CentOS-6.9-x86_64-minimal.iso dist/centos
+mount -t iso9660 -o loop,ro -v ~/VMware-VMvisor-Installer-6.0.0.update01-3029758.x86_64.iso dist/centos
 docker restart cobbler
 docker exec -it cobbler cobbler import --name=exsi6.0 --arch=x86_64 --path=/mnt
-mount -t iso9660 -o loop,ro -v dist/VMware-VMvisor-Installer-6.5.0-4564106.x86_64.iso dist/centos
+mount -t iso9660 -o loop,ro -v ~/VMware-VMvisor-Installer-6.5.0-4564106.x86_64.iso dist/centos
 docker restart cobbler
 docker exec -it cobbler cobbler import --name=exsi6.5 --arch=x86_64 --path=/mnt
 
 添加一台机器的系统安装，机器的mac为00:50:56:83:70:ea，设置机器的ip为192.161.17.141 host1 gw:192.161.17.1
-cobbler system add --name=testvm1 --profile=centos7-x86_64 --mac=00:50:56:83:70:ea --interface=eth0 --ip-address=192.161.17.141 --hostname=testvm1 --gateway=192.161.17.1 \
---dns-name=testvm1 --static=1 --ip-address=192.161.17.141
+cobbler system add --name=testvm1 --hostname=testvm1 --dns-name=testvm1 --profile=centos7-x86_64 \
+--mac=00:50:56:83:70:ea --interface=eth0 --ip-address=192.161.17.141 --subnet=255.255.255.0 --gateway=192.161.17.1 \
+--static=1 --name-servers=192.168.1.12
+
+cobbler system add --name=esxi-sls1 --hostname=esxi-sls1 --dns-name=esxi-sls1 --profile=exsi6.0-x86_64 \
+--mac=00:50:56:83:ee:5d --interface=vmnic0 --ip-address=192.161.17.142 --subnet=255.255.255.0 --gateway=192.161.17.1 \
+--static=1 --name-servers=192.168.1.12
+
+cobbler system add --name=esxi-sls2 --hostname=esxi-sls2 --dns-name=esxi-sls2 --profile=exsi6.0-x86_64 \
+--mac=00:50:56:83:1a:85 --interface=vmnic0 --ip-address=192.161.17.143 --subnet=255.255.255.0 --gateway=192.161.17.1 \
+--static=1 --name-servers=192.168.1.12
+
+cobbler system add --name=esxi-sls3 --hostname=esxi-sls3 --dns-name=esxi-sls3 --profile=exsi6.0-x86_64 \
+--mac=00:50:56:83:e4:f2 --interface=vmnic0 --ip-address=192.161.17.144 --subnet=255.255.255.0 --gateway=192.161.17.1 \
+--static=1 --name-servers=192.168.1.12
+
 
 http://%s/cblr/svc/op/trig/mode/pre/%s/%s
 http://192.161.17.2/cblr/svc/op/trig/mode/pre/profile/esxi65-x86_64
