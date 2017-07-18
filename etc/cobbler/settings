@@ -98,8 +98,8 @@ default_ownership:
 # The simplest way to change the password is to run 
 # openssl passwd -1
 # and put the output between the "" below.
-default_password_crypted: "$1$.KDtpgeh$c/3yOtyKBjVvVQHRqJ8sG/"
-# something
+default_password_crypted: "$1$hLclSu0f$OUH4N3gmKpXFZeCNtSAy20"
+# 58858547
 
 # the default template type to use in the absence of any
 # other detected template. If you do not specify the template 
