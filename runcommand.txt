@@ -33,7 +33,14 @@ https://localhost/cobbler_web
 # docker exec -it cobbler bash
 
 mount -t iso9660 -o loop,ro -v ~/CentOS-7-x86_64-Minimal-1611.iso dist/centos
+docker restart cobbler
+docker exec -it cobbler cobbler import --name=centos7 --arch=x86_64 --path=/mnt
+cobbler profile edit --name=centos7-x86_64 --kopts='net.ifnames=0 biosdevname=0' 
+
 mount -t iso9660 -o loop,ro -v ~/CentOS-6.9-x86_64-minimal.iso dist/centos
+docker restart cobbler
+docker exec -it cobbler cobbler import --name=centos6 --arch=x86_64 --path=/mnt
+
 mount -t iso9660 -o loop,ro -v ~/VMware-VMvisor-Installer-6.0.0.update01-3029758.x86_64.iso dist/centos
 docker restart cobbler
 docker exec -it cobbler cobbler import --name=exsi6.0 --arch=x86_64 --path=/mnt
@@ -43,7 +50,11 @@ docker exec -it cobbler cobbler import --name=exsi6.5 --arch=x86_64 --path=/mnt
 
 添加一台机器的系统安装，机器的mac为00:50:56:83:70:ea，设置机器的ip为192.161.17.141 host1 gw:192.161.17.1
 cobbler system add --name=testvm1 --hostname=testvm1 --dns-name=testvm1 --profile=centos7-x86_64 \
---mac=00:50:56:83:70:ea --interface=eth0 --ip-address=192.161.17.141 --subnet=255.255.255.0 --gateway=192.161.17.1 \
+--mac=00:50:56:83:70:ea --interface=eth0 --ip-address=192.161.17.140 --subnet=255.255.255.0 --gateway=192.161.17.1 \
+--static=1 --name-servers=192.168.1.12
+
+cobbler system add --name=testvm2 --hostname=testvm2 --dns-name=testvm2 --profile=centos6-x86_64 \
+--mac=00:50:56:83:8a:95 --interface=eth0 --ip-address=192.161.17.141 --subnet=255.255.255.0 --gateway=192.161.17.1 \
 --static=1 --name-servers=192.168.1.12
 
 cobbler system add --name=esxi-sls1 --hostname=esxi-sls1 --dns-name=esxi-sls1 --profile=exsi6.0-x86_64 \
@@ -56,8 +67,15 @@ cobbler system add --name=esxi-sls2 --hostname=esxi-sls2 --dns-name=esxi-sls2 --
 
 cobbler system add --name=esxi-sls3 --hostname=esxi-sls3 --dns-name=esxi-sls3 --profile=exsi6.0-x86_64 \
 --mac=00:50:56:83:e4:f2 --interface=vmnic0 --ip-address=192.161.17.144 --subnet=255.255.255.0 --gateway=192.161.17.1 \
+--static=1 --name-servers=192.168.1.1
+
+cobbler system add --name=esxi-sls4 --hostname=esxi-sls4 --dns-name=esxi-sls4 --profile=exsi6.5-x86_64 \
+--mac=00:50:56:83:19:1e --interface=vmnic0 --ip-address=192.161.17.145 --subnet=255.255.255.0 --gateway=192.161.17.1 \
 --static=1 --name-servers=192.168.1.12
 
 
-http://%s/cblr/svc/op/trig/mode/pre/%s/%s
-http://192.161.17.2/cblr/svc/op/trig/mode/pre/profile/esxi65-x86_64
+# cobbler repo add --name=Openstack-Newton --mirror=https://mirrors.aliyun.com/centos/7/cloud/x86_64/openstack-newton/ --arch=x86_64 --breed=yum
+# cobbler repo add --name=Openstack-Ocata --mirror=https://mirrors.aliyun.com/centos/7/cloud/x86_64/openstack-ocata/ --arch=x86_64 --breed=yum
+# cobbler reposync
+
+
