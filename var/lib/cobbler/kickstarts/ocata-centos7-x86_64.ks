@@ -64,10 +64,23 @@ $SNIPPET('log_ks_post')
 # Start yum configuration
 $yum_config_stanza
 # Enable lan centos source
-sudo mkdir /etc/yum.repos.d/.bakup
-sudo mv /etc/yum.repos.d/CentOS-* /etc/yum.repos.d/.bakup/
-sudo curl -o /etc/yum.repos.d/Centos-7.repo http://192.161.14.180/yum/lan-centos7-source.repo
-sudo curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release http://192.161.14.180/CENTOS7/dvd/centos/RPM-GPG-KEY-CentOS-7
+mkdir /etc/yum.repos.d/.bakup
+mv /etc/yum.repos.d/CentOS-* /etc/yum.repos.d/.bakup/
+cat <<'EOF' > /etc/yum.repos.d/Centos-7-lan.repo
+[centos7]
+name=CentOS-$releasever - Media
+baseurl=http://192.161.14.180/CENTOS7/dvd/centos
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+[epel7]
+name=CentOS-$releasever - Media
+baseurl=http://192.161.14.24/mirrors/epel/7/x86_64
+gpgcheck=1
+enabled=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+EOF
 sudo yum clean all
 # End yum configuration
 $SNIPPET('post_install_kernel_options')
