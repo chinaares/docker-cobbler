@@ -35,7 +35,7 @@ selinux --disabled
 # Do not configure the X Window System
 skipx
 # System timezone
-timezone  America/New_York
+timezone Asia/Shanghai
 # Install OS instead of upgrade
 install
 # Clear the Master Boot Record
@@ -63,8 +63,6 @@ $SNIPPET('log_ks_post_nochroot')
 $SNIPPET('log_ks_post')
 # Start yum configuration
 $yum_config_stanza
-wget -SO  /etc/yum.repos.d/Centos-7.repo http://192.161.14.180/yum/lan-centos7-source.repo
-yum clean all
 # End yum configuration
 $SNIPPET('post_install_kernel_options')
 $SNIPPET('post_install_network_config')
@@ -75,6 +73,12 @@ $SNIPPET('redhat_register')
 $SNIPPET('cobbler_register')
 # Enable post-install boot notification
 $SNIPPET('post_anamon')
+# Enable lan centos source
+mkdir /etc/yum.repos.d/.bakup
+mv /etc/yum.repos.d/CentOS-* /etc/yum.repos.d/.bakup/
+curl -o /etc/yum.repos.d/Centos-7.repo http://192.161.14.180/yum/lan-centos7-source.repo
+curl -o /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release http://192.161.14.180/CENTOS7/dvd/centos/RPM-GPG-KEY-CentOS-7
+yum clean all
 # Start final steps
 $SNIPPET('kickstart_done')
 # End final steps
