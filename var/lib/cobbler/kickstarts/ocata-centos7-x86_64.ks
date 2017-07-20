@@ -100,9 +100,10 @@ sudo systemctl stop NetworkManager
 sudo systemctl enable network
 sudo systemctl start network
 sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
-yum update -y
-sudo yum install -y wget crudini net-tools vim ntpdate bash-completion
-yum install -y openstack-packstack
+setenforce 0
+#yum update -y
+#yum install -y wget crudini net-tools vim ntpdate bash-completion
+#yum install -y openstack-packstack
 # Start final steps
 $SNIPPET('kickstart_done')
 # End final steps
