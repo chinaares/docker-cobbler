@@ -70,14 +70,14 @@ cat <<'EOF' > /etc/yum.repos.d/Centos-7-lan.repo
 [centos7]
 name=CentOS-$releasever - Media
 baseurl=http://192.161.14.180/CENTOS7/dvd/centos
-gpgcheck=1
+gpgcheck=0
 enabled=1
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
 
 [epel7]
 name=CentOS-$releasever - Media
 baseurl=http://192.161.14.24/mirrors/epel/7/x86_64
-gpgcheck=1
+gpgcheck=0
 enabled=1
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
 EOF
@@ -92,6 +92,17 @@ $SNIPPET('redhat_register')
 $SNIPPET('cobbler_register')
 # Enable post-install boot notification
 $SNIPPET('post_anamon')
+# prepare for openstack installation
+sudo systemctl disable firewalld
+sudo systemctl stop firewalld
+sudo systemctl disable NetworkManager
+sudo systemctl stop NetworkManager
+sudo systemctl enable network
+sudo systemctl start network
+sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
+yum update -y
+sudo yum install -y wget crudini
+yum install -y openstack-packstack
 # Start final steps
 $SNIPPET('kickstart_done')
 # End final steps
