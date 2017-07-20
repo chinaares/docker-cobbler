@@ -12,7 +12,7 @@ clearpart --all --initlabel
 # Use text mode install
 text
 # Firewall configuration
-firewall --enabled
+firewall --disable
 # Run the Setup Agent on first boot
 firstboot --disable
 # System keyboard
@@ -101,7 +101,7 @@ sudo systemctl enable network
 sudo systemctl start network
 sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
 yum update -y
-sudo yum install -y wget crudini
+sudo yum install -y wget crudini net-tools vim ntpdate bash-completion
 yum install -y openstack-packstack
 # Start final steps
 $SNIPPET('kickstart_done')
