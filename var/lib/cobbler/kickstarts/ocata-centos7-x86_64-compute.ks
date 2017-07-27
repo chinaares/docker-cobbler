@@ -132,8 +132,10 @@ yum install -y openstack-selinux python-openstackclient yum-plugin-priorities op
 1. 配置nova.conf
 cp /etc/nova/nova.conf /etc/nova/nova.conf.bak
 >/etc/nova/nova.conf
+NIC=eth0
+IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
 openstack-config --set /etc/nova/nova.conf DEFAULT auth_strategy keystone
-openstack-config --set /etc/nova/nova.conf DEFAULT my_ip 10.0.0.55
+openstack-config --set /etc/nova/nova.conf DEFAULT my_ip $IP
 openstack-config --set /etc/nova/nova.conf DEFAULT use_neutron True
 openstack-config --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
 openstack-config --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:123456@controller1
@@ -159,8 +161,8 @@ openstack-config --set /etc/nova/nova.conf placement os_region_name RegionOne
 openstack-config --set /etc/nova/nova.conf vnc enabled True
 openstack-config --set /etc/nova/nova.conf vnc keymap en-us
 openstack-config --set /etc/nova/nova.conf vnc vncserver_listen 0.0.0.0
-openstack-config --set /etc/nova/nova.conf vnc vncserver_proxyclient_address 10.0.0.55
-openstack-config --set /etc/nova/nova.conf vnc novncproxy_base_url http://192.161.17.51:6080/vnc_auto.html
+openstack-config --set /etc/nova/nova.conf vnc vncserver_proxyclient_address $IP
+openstack-config --set /etc/nova/nova.conf vnc novncproxy_base_url http://controller1:6080/vnc_auto.html
 openstack-config --set /etc/nova/nova.conf glance api_servers http://controller1:9292
 openstack-config --set /etc/nova/nova.conf oslo_concurrency lock_path /var/lib/nova/tmp
 openstack-config --set /etc/nova/nova.conf libvirt virt_type qemu
@@ -173,6 +175,94 @@ systemctl status libvirtd.service openstack-nova-compute.service
 3. 到controller上执行验证
 source /root/admin-openrc
 openstack compute service list
+
+
+####################################################################################################
+#
+#       Compute节点部署neutron
+#
+####################################################################################################
+# 安装neutron相关软件
+yum install -y openstack-neutron-linuxbridge ebtables ipset
+
+# 配置neutron配置文件/etc/neutron/neutron.conf （配置服务组件）
+cp /etc/neutron/neutron.conf /etc/neutron/neutron.conf.bak
+>/etc/neutron/neutron.conf
+#openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
+#openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins router
+openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
+openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
+openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:123456@controller1
+#openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes True
+#openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_data_changes True
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_uri http://controller1:5000
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://controller1:35357 
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers controller1:11211
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_type password
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken project_name service
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken username neutron
+openstack-config --set /etc/neutron/neutron.conf keystone_authtoken password 123456
+#openstack-config --set /etc/neutron/neutron.conf database connection mysql+pymysql://neutron:123456@controller1/neutron
+openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
+#openstack-config --set /etc/neutron/neutron.conf nova auth_url http://controller1:35357
+#openstack-config --set /etc/neutron/neutron.conf nova auth_type password
+#openstack-config --set /etc/neutron/neutron.conf nova project_domain_name default
+#openstack-config --set /etc/neutron/neutron.conf nova user_domain_name default
+#openstack-config --set /etc/neutron/neutron.conf nova region_name RegionOne
+#openstack-config --set /etc/neutron/neutron.conf nova project_name service
+#openstack-config --set /etc/neutron/neutron.conf nova username nova
+#openstack-config --set /etc/neutron/neutron.conf nova password 123456
+
+# 配置网络选项 - 选择与您之前在控制节点上选择的相同的网络选项(这里为：自服务网络)
+# 8、配置/etc/neutron/plugins/ml2/ml2_conf.ini （配置 Modular Layer 2 (ML2) 插件）
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers flat,vlan,vxlan 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers linuxbridge,l2population 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 extension_drivers port_security 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types vxlan 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 path_mtu 1500
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 1:1000 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset True
+
+# 9、配置/etc/neutron/plugins/ml2/linuxbridge_agent.ini （配置Linuxbridge代理）
+NIC=eth1
+IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini DEFAULT debug false
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini linux_bridge physical_interface_mappings provider:$NIC
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan enable_vxlan True
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan local_ip $IP
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan l2_population True 
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini agent prevent_arp_spoofing True
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup enable_security_group True 
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
+
+# 注意: eno16777736(修改后为eth1)是连接外网的网卡，一般这里写的网卡名都是能访问外网的，如果不是外网网卡，那么VM就会与外界网络隔离。
+# local_ip 定义的是隧道网络，vxLan下 vm-linuxbridge->vxlan ------tun-----vxlan->linuxbridge-vm
+
+
+# 配置计算服务来使用网络服务：重新配置/etc/nova/nova.conf，配置这步的目的是让compute节点能使用上neutron网络
+openstack-config --set /etc/nova/nova.conf neutron url http://controller1:9696 
+openstack-config --set /etc/nova/nova.conf neutron auth_url http://controller1:35357 
+openstack-config --set /etc/nova/nova.conf neutron auth_type password 
+openstack-config --set /etc/nova/nova.conf neutron project_domain_name default 
+openstack-config --set /etc/nova/nova.conf neutron user_domain_name default 
+openstack-config --set /etc/nova/nova.conf neutron region_name RegionOne
+openstack-config --set /etc/nova/nova.conf neutron project_name service 
+openstack-config --set /etc/nova/nova.conf neutron username neutron 
+openstack-config --set /etc/nova/nova.conf neutron password 123456
+#openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy True 
+#openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret 123456
+
+# 重启计算服务：
+systemctl restart openstack-nova-compute.service
+
+# 启动Linuxbridge代理并配置它开机自启动：
+systemctl enable neutron-linuxbridge-agent.service
+systemctl start neutron-linuxbridge-agent.service
+
+
 
 # Start final steps
 $SNIPPET('kickstart_done')
