@@ -149,7 +149,7 @@ openstack-config --set /etc/nova/nova.conf keystone_authtoken project_name servi
 openstack-config --set /etc/nova/nova.conf keystone_authtoken username nova
 openstack-config --set /etc/nova/nova.conf keystone_authtoken password 123456
 openstack-config --set /etc/nova/nova.conf placement auth_uri http://controller1:5000
-openstack-config --set /etc/nova/nova.conf placement auth_url http://controller1:35357
+openstack-config --set /etc/nova/nova.conf placement auth_url http://controller1:35357/v3
 openstack-config --set /etc/nova/nova.conf placement memcached_servers controller1:11211
 openstack-config --set /etc/nova/nova.conf placement auth_type password 
 openstack-config --set /etc/nova/nova.conf placement project_domain_name default
@@ -165,6 +165,11 @@ openstack-config --set /etc/nova/nova.conf vnc vncserver_proxyclient_address $IP
 openstack-config --set /etc/nova/nova.conf vnc novncproxy_base_url http://controller1:6080/vnc_auto.html
 openstack-config --set /etc/nova/nova.conf glance api_servers http://controller1:9292
 openstack-config --set /etc/nova/nova.conf oslo_concurrency lock_path /var/lib/nova/tmp
+
+#确定您的计算节点是否支持虚拟机的硬件加速。
+egrep -c '(vmx|svm)' /proc/cpuinfo
+#如果这个命令返回了 1 或更大的值，那么你的计算节点支持硬件虚拟化且不需要额外的配置。
+#如果这个命令返回了 0 值，那么你的计算节点不支持硬件虚拟化。你必须配置 libvirt 来使用 QEMU 去代替 KVM
 openstack-config --set /etc/nova/nova.conf libvirt virt_type qemu
 
 2. 设置libvirtd.service 和openstack-nova-compute.service开机启动
@@ -175,6 +180,9 @@ systemctl status libvirtd.service openstack-nova-compute.service
 3. 到controller上执行验证
 source /root/admin-openrc
 openstack compute service list
+openstack catalog list
+openstack image list
+nova-status upgrade check
 
 
 ####################################################################################################

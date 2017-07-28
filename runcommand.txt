@@ -14,10 +14,12 @@ docker run \
 -v ${WORK_DIR}/etc/cobbler/pxe/bootcfg_esxi65.template:/etc/cobbler/pxe/bootcfg_esxi65.template \
 -v ${WORK_DIR}/var/www/cobbler/images:/var/www/cobbler/images \
 -v ${WORK_DIR}/var/www/cobbler/ks_mirror:/var/www/cobbler/ks_mirror \
+-v ${WORK_DIR}/var/www/cobbler/repo_mirror/:/var/www/cobbler/repo_mirror/ \
 -v ${WORK_DIR}/var/www/cobbler/links:/var/www/cobbler/links \
 -v ${WORK_DIR}/var/lib/cobbler/config:/var/lib/cobbler/config \
 -v ${WORK_DIR}/var/lib/cobbler/distro_signatures.json:/var/lib/cobbler/distro_signatures.json \
 -v ${WORK_DIR}/var/lib/cobbler/kickstarts/sample_esxi6.ks:/var/lib/cobbler/kickstarts/sample_esxi6.ks \
+-v ${WORK_DIR}/var/lib/cobbler/kickstarts/ocata-centos7-x86_64.ks:/var/lib/cobbler/kickstarts/ocata-centos7-x86_64.ks \
 -v ${WORK_DIR}/var/lib/tftpboot:/var/lib/tftpboot \
 -v ${WORK_DIR}/dist/centos:/mnt:ro \
 -p 69:69 \
@@ -27,29 +29,37 @@ docker run \
 --name cobbler cobbler
 
 https://localhost/cobbler_web
-# docker exec -it cobbler cobbler check
-# docker exec -it cobbler cobbler get-loaders
-# docker exec -it cobbler cobbler sync
-# docker exec -it cobbler bash
+ docker exec -it cobbler cobbler check
+ docker exec -it cobbler cobbler get-loaders
+ docker exec -it cobbler cobbler sync
+ docker exec -it cobbler bash
+
+mount -t iso9660 -o loop,ro -v ~/CentOS-7-x86_64-Minimal-1511.iso dist/centos
+docker restart cobbler
+docker exec -it cobbler cobbler import --name=centos7.2 --arch=x86_64 --path=/mnt
+docker exec -it cobbler cobbler profile edit --name=centos7.2-x86_64 --kopts='net.ifnames=0 biosdevname=0' 
+umount dist/centos
 
 mount -t iso9660 -o loop,ro -v ~/CentOS-7-x86_64-Minimal-1611.iso dist/centos
 docker restart cobbler
 docker exec -it cobbler cobbler import --name=centos7 --arch=x86_64 --path=/mnt
-cobbler profile edit --name=centos7-x86_64 --kopts='net.ifnames=0 biosdevname=0' 
+docker exec -it cobbler cobbler profile edit --name=centos7-x86_64 --kopts='net.ifnames=0 biosdevname=0' 
+umount dist/centos
 
 mount -t iso9660 -o loop,ro -v ~/CentOS-6.9-x86_64-minimal.iso dist/centos
 docker restart cobbler
 docker exec -it cobbler cobbler import --name=centos6 --arch=x86_64 --path=/mnt
-
+umount dist/centos
 mount -t iso9660 -o loop,ro -v ~/VMware-VMvisor-Installer-6.0.0.update01-3029758.x86_64.iso dist/centos
 docker restart cobbler
 docker exec -it cobbler cobbler import --name=exsi6.0 --arch=x86_64 --path=/mnt
+umount dist/centos
 mount -t iso9660 -o loop,ro -v ~/VMware-VMvisor-Installer-6.5.0-4564106.x86_64.iso dist/centos
 docker restart cobbler
 docker exec -it cobbler cobbler import --name=exsi6.5 --arch=x86_64 --path=/mnt
-
+umount dist/centos
 添加一台机器的系统安装，机器的mac为00:50:56:83:70:ea，设置机器的ip为192.161.17.141 host1 gw:192.161.17.1
-cobbler system add --name=testvm1 --hostname=testvm1 --dns-name=testvm1 --profile=centos7-x86_64 \
+cobbler system add --name=testvm1 --hostname=testvm1 --dns-name=testvm1 --profile=centos7.3-x86_64 \
 --mac=00:50:56:83:70:ea --interface=eth0 --ip-address=192.161.17.140 --subnet=255.255.255.0 --gateway=192.161.17.1 \
 --static=1 --name-servers=192.168.1.12
 
@@ -78,4 +88,124 @@ cobbler system add --name=esxi-sls4 --hostname=esxi-sls4 --dns-name=esxi-sls4 --
 # cobbler repo add --name=Openstack-Ocata --mirror=https://mirrors.aliyun.com/centos/7/cloud/x86_64/openstack-ocata/ --arch=x86_64 --breed=yum
 # cobbler reposync
 
+<<All in one>>
+cobbler system add --name=os-aio --hostname=os-aio.local --dns-name=os-aio.local --profile=ocata-centos7-x86_64 \
+--mac=00:50:56:83:bc:3b --interface=eth0 \
+--static=1 --name-servers=192.168.1.12
+cobbler system edit --name=os-aio --ksmeta="admin_ip=10.0.0.54 public_ip=192.161.17.54"
+cobbler system edit --name=os-aio --interface eth0 --ip-address=10.0.0.54 --subnet=255.255.255.0 --static=1
+cobbler system edit --name=os-aio --interface eth1 --ip-address=192.161.17.54 --subnet=255.255.255.0 --static=1 --if-gateway=192.161.17.1
+cobbler system edit --name=os-aio --interface eth2 --ip-address=10.1.1.54 --subnet=255.255.255.0 --static=1
 
+<<multi-nodes>>
+cobbler system add --name=controller1 --hostname=controller1.local --dns-name=controller1.local --profile=ocata-centos7-x86_64 \
+--mac=00:50:56:83:4a:c1 --interface=eth0 \
+--static=1 --name-servers=192.168.1.12
+cobbler system edit --name=controller1 --ksmeta="admin_ip=10.0.0.51 public_ip=192.161.17.51"
+cobbler system edit --name=controller1 --interface eth0 --ip-address=10.0.0.51 --subnet=255.255.255.0 --static=1
+cobbler system edit --name=controller1 --interface eth1 --ip-address=192.161.17.51 --subnet=255.255.255.0 --static=1 --if-gateway=192.161.17.1
+cobbler system edit --name=controller1 --interface eth2 --ip-address=10.1.1.51 --subnet=255.255.255.0 --static=1
+
+cobbler system add --name=compute1 --hostname=compute1.local --dns-name=compute1.local --profile=ocata-centos7-x86_64 \
+--mac=00:50:56:83:95:e0 --interface=eth0 \
+--static=1 --name-servers=192.168.1.12
+cobbler system edit --name=compute1 --ksmeta="admin_ip=10.0.0.55 public_ip=192.161.17.55"
+cobbler system edit --name=compute1 --interface eth0 --ip-address=10.0.0.55 --subnet=255.255.255.0 --static=1
+cobbler system edit --name=compute1 --interface eth1 --ip-address=192.161.17.55 --subnet=255.255.255.0 --static=1 --if-gateway=192.161.17.1
+cobbler system edit --name=compute1 --interface eth2 --ip-address=10.1.1.55 --subnet=255.255.255.0 --static=1
+
+cobbler system add --name=compute2 --hostname=compute2.local --dns-name=compute2.local --profile=ocata-centos7-x86_64 \
+--mac=00:50:56:83:b7:a0 --interface=eth0 \
+--static=1 --name-servers=192.168.1.12
+cobbler system edit --name=compute2 --ksmeta="admin_ip=10.0.0.56 public_ip=192.161.17.56"
+cobbler system edit --name=compute2 --interface eth0 --ip-address=10.0.0.56 --subnet=255.255.255.0 --static=1
+cobbler system edit --name=compute2 --interface eth1 --ip-address=192.161.17.56 --subnet=255.255.255.0 --static=1 --if-gateway=192.161.17.1
+cobbler system edit --name=compute2 --interface eth2 --ip-address=10.1.1.56 --subnet=255.255.255.0 --static=1
+
+cobbler system add --name=network1 --hostname=network1.local --dns-name=network1.local --profile=ocata-centos7-x86_64 \
+--mac=00:50:56:83:14:31 --interface=eth0 \
+--static=1 --name-servers=192.168.1.12
+cobbler system edit --name=network1 --ksmeta="admin_ip=10.0.0.59 public_ip=192.161.17.59"
+cobbler system edit --name=network1 --interface eth0 --ip-address=10.0.0.59 --subnet=255.255.255.0 --static=1
+cobbler system edit --name=network1 --interface eth1 --ip-address=192.161.17.59 --subnet=255.255.255.0 --static=1 --if-gateway=192.161.17.1
+cobbler system edit --name=network1 --interface eth2 --ip-address=10.1.1.59 --subnet=255.255.255.0 --static=1
+
+cobbler system add --name=cinder1 --hostname=cinder1.local --dns-name=cinder1.local --profile=ocata-centos7-x86_64 \
+--mac=00:50:56:83:d2:33 --interface=eth0 \
+--static=1 --name-servers=192.168.1.12
+cobbler system edit --name=cinder1 --ksmeta="admin_ip=10.0.0.60 public_ip=192.161.17.60"
+cobbler system edit --name=cinder1 --interface eth0 --ip-address=10.0.0.60 --subnet=255.255.255.0 --static=1
+cobbler system edit --name=cinder1 --interface eth1 --ip-address=192.161.17.60 --subnet=255.255.255.0 --static=1 --if-gateway=192.161.17.1
+cobbler system edit --name=cinder1 --interface eth2 --ip-address=10.1.1.60 --subnet=255.255.255.0 --static=1
+
+
+
+cat <<'EOF' >> /etc/hosts
+10.0.0.51 controller1
+10.0.0.55 compute1
+10.0.0.56 compute2
+10.0.0.59 network1
+10.0.0.60 cinder1
+EOF
+
+通过packstack安装openstack
+sudo systemctl disable firewalld
+sudo systemctl stop firewalld
+sudo systemctl disable NetworkManager
+sudo systemctl stop NetworkManager
+sudo systemctl enable network
+sudo systemctl start network
+
+sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/sysconfig/selinux
+
+yum update -y
+
+ sudo yum install -y wget crudini
+ yum install -y openstack-packstack
+ init 6
+
+
+packstack --allinone \
+    --default-password=admin \
+    --os-cinder-install=y \
+    --os-ceilometer-install=y \
+    --os-trove-install=n \
+    --os-ironic-install=n \
+    --nagios-install=n \
+    --os-swift-install=y \
+    --os-gnocchi-install=y \
+    --os-aodh-install=y \
+    --os-neutron-ovs-bridge-mappings=extnet:br-ex \
+    --os-neutron-ovs-bridge-interfaces=br-ex:eth1 \
+    --os-neutron-ovs-bridges-compute=br-ex \
+    --os-neutron-ml2-type-drivers=vxlan,flat \
+    --os-controller-host=192.161.17.54 \
+    --os-compute-hosts=192.161.17.55,192.161.17.56 \
+    --os-neutron-ovs-tunnel-if=eth0 \
+    --provision-demo=n
+
+source ~/keystonerc_admin
+
+curl http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img | glance \
+image-create --name='cirros' \
+--visibility=public \
+--container-format=bare \
+--disk-format=qcow2
+
+neutron net-create external_network --provider:network_type flat \
+--provider:physical_network extnet  \
+--router:external \
+--shared
+
+neutron subnet-create --name public_subnet \
+--enable_dhcp=False \
+--allocation-pool=start=192.161.17.80,end=192.161.17.100 \
+--gateway=192.161.17.1 external_network 192.161.17.0/24
+
+neutron net-create private_network
+neutron subnet-create --name private_subnet private_network 10.1.1.0/24 \
+--dns-nameserver 192.168.1.12
+
+neutron router-create router
+neutron router-gateway-set router external_network
+neutron router-interface-add router private_subnet
