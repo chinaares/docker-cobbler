@@ -273,15 +273,16 @@ openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset True
 
 # 9、配置/etc/neutron/plugins/ml2/linuxbridge_agent.ini （配置Linuxbridge代理）
-NIC=eth1
-IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+NIC1=eth1
+NIC2=eth2
+NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini DEFAULT debug false
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini linux_bridge physical_interface_mappings provider:$NIC
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan enable_vxlan True
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan local_ip $IP
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan l2_population True 
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini agent prevent_arp_spoofing True
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup enable_security_group True 
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini linux_bridge physical_interface_mappings provider:$NIC1,overlay:$NIC2
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan enable_vxlan true
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan local_ip $NIC2_IP
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan l2_population true 
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini agent prevent_arp_spoofing true
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup enable_security_group true 
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
 
 # 注意: eno16777736(修改后为eth1)是连接外网的网卡，一般这里写的网卡名都是能访问外网的，如果不是外网网卡，那么VM就会与外界网络隔离。
