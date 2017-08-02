@@ -833,6 +833,9 @@ OPENSTACK_API_VERSIONS = {
 TIME_ZONE = "Asia/Shanghai"
 
 3、启动dashboard服务并设置开机启动
+# 由于禁用ipv6，需要去除相应的地址
+ sed -i 's/,::1,/,/g' /etc/sysconfig/memcached
+# 重启服务
 systemctl restart httpd.service memcached.service
 systemctl status httpd.service memcached.service
 
