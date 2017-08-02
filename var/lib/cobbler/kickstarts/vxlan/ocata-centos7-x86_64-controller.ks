@@ -841,8 +841,15 @@ systemctl status httpd.service memcached.service
 
 
 到此，Controller节点搭建完毕，打开firefox浏览器即可访问http://controller1.local/dashboard(在客户端/etc/hosts中配置下名字解析)可进入openstack界面！
+openstack flavor create m1.tiny --id 1 --ram 512 --disk 1 --vcpus 1
+openstack flavor create m1.small --id 2 --ram 2048 --disk 20 --vcpus 1
+openstack flavor create m1.medium --id 3 --ram 4096 --disk 40 --vcpus 2
+openstack flavor create m1.large --id 4 --ram 8192 --disk 80 --vcpus 4
+openstack flavor create m1.xlarge --id 5 --ram 16384 --disk 160 --vcpus 8
+openstack flavor list
 
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic private_subnet testvm
+openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic net-id=private testvm1
+
 
 ####################################################################################################
 #
