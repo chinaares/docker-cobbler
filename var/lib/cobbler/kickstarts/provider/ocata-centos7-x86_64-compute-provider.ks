@@ -120,6 +120,42 @@ systemctl start ntpd.service
 #yum update -y
 #yum install -y wget crudini net-tools vim ntpdate bash-completion
 #yum install -y openstack-packstack
+####################################################################################################
+问题列表
+1、/var/log/neutron/linuxbridge-agent.log 出现错误： RTNETLINK answers: File exists
+原因：
+  （
+  # vi /usr/lib/python2.7/site-packages/neutron/agent/linux/utils.py
+  152行：添加
+  LOG.debug(' '.join(cmd) + " TEST HOGE DEBUG11: %d", 9999)
+  # systemctl list-unit-files | egrep neutron | egrep enabled | awk '{print $1}' | xargs -i systemctl restart {}
+  ）
+   创建虚拟机，分配公共ip时执行的命令有错误：
+      ip -4 addr add 192.161.17.51/24 scope global dev brq99c79baa-9a brd 192.161.0.255
+解决方法：
+   1、provider网络接口的网卡，不要配置静态ip。
+   2、安装系统时可添加临时public ip
+        ip -4 addr add 192.161.17.55/24 dev eth1
+        route add default gw 192.161.17.1
+        ip -4 addr add 192.161.17.56/24 dev eth1
+        route add default gw 192.161.17.1
+      安装完成后执行：service network restart 配置即刻失效。
+
+
+2、/var/log/neutron/linuxbridge-agent.log 出现错误：RTNETLINK answers: Permission denied
+原因：
+    （
+  # vi /usr/lib/python2.7/site-packages/neutron/agent/linux/utils.py
+  152行：添加
+  LOG.debug(' '.join(cmd) + " TEST HOGE DEBUG11: %d", 9999)
+  # systemctl list-unit-files | egrep neutron | egrep enabled | awk '{print $1}' | xargs -i systemctl restart {}
+  ）
+   创建虚拟机，分配公共ip时执行的命令有错误：
+      ip -6 addr add fd3c:dfbd:20c3:d000:250:56ff:fe83:cd15/64 scope global dev brqd070a97c-c0
+解决方法：
+   禁用ipv6：
+   echo "net.ipv6.conf.all.disable_ipv6=1" >> /usr/lib/sysctl.d/00-system.conf
+   service network restart
 
 ####################################################################################################
 #
@@ -191,7 +227,7 @@ nova-status upgrade check
 #
 ####################################################################################################
 # 安装neutron相关软件
-yum install -y openstack-neutron-linuxbridge ebtables ipset
+yum install -y openstack-neutron openstack-neutron-linuxbridge ebtables ipset
 #yum install -y openstack-neutron-openvswitch ebtables ipset
 
 # 配置neutron配置文件/etc/neutron/neutron.conf （配置服务组件）
@@ -199,7 +235,7 @@ cp /etc/neutron/neutron.conf /etc/neutron/neutron.conf.bak
 >/etc/neutron/neutron.conf
 #openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
 #openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins router
-openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
+#openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
 openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
 openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:123456@controller1
 #openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes True
@@ -215,16 +251,17 @@ openstack-config --set /etc/neutron/neutron.conf keystone_authtoken username neu
 openstack-config --set /etc/neutron/neutron.conf keystone_authtoken password 123456
 #openstack-config --set /etc/neutron/neutron.conf database connection mysql+pymysql://neutron:123456@controller1/neutron
 openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
-#openstack-config --set /etc/neutron/neutron.conf nova url http://controller1:9696
-#openstack-config --set /etc/neutron/neutron.conf nova auth_url http://controller1:35357
-#openstack-config --set /etc/neutron/neutron.conf nova auth_type password
-#openstack-config --set /etc/neutron/neutron.conf nova project_domain_name default
-#openstack-config --set /etc/neutron/neutron.conf nova user_domain_name default
-#openstack-config --set /etc/neutron/neutron.conf nova region_name RegionOne
-#openstack-config --set /etc/neutron/neutron.conf nova project_name service
-#openstack-config --set /etc/neutron/neutron.conf nova username nova
-#openstack-config --set /etc/neutron/neutron.conf nova password 123456
+openstack-config --set /etc/neutron/neutron.conf nova url http://controller1:9696
+openstack-config --set /etc/neutron/neutron.conf nova auth_url http://controller1:35357
+openstack-config --set /etc/neutron/neutron.conf nova auth_type password
+openstack-config --set /etc/neutron/neutron.conf nova project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova region_name RegionOne
+openstack-config --set /etc/neutron/neutron.conf nova project_name service
+openstack-config --set /etc/neutron/neutron.conf nova username nova
+openstack-config --set /etc/neutron/neutron.conf nova password 123456
 
+---------------------------------------------------------------------------------------------------------------------
 # 配置网络选项 - 选择与您之前在控制节点上选择的相同的网络选项(这里为：自服务网络)
 # 8、配置/etc/neutron/plugins/ml2/ml2_conf.ini （配置 Modular Layer 2 (ML2) 插件）
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers flat,vlan,vxlan 
@@ -235,18 +272,20 @@ openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 path_mtu 1500
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks *
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 1:1000 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset True
+---------------------------------------------------------------------------------------------------------------------
 
 # 9、配置/etc/neutron/plugins/ml2/linuxbridge_agent.ini （配置Linuxbridge代理）
 NIC=eth1
 IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini DEFAULT debug false
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini DEFAULT debug False
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini linux_bridge physical_interface_mappings provider:$NIC
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan enable_vxlan True
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan local_ip $IP
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan enable_vxlan False
+#openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan local_ip $IP
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan l2_population True 
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini agent prevent_arp_spoofing True
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup enable_security_group True 
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
+# openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup firewall_driver iptables
 
 # 注意: eno16777736(修改后为eth1)是连接外网的网卡，一般这里写的网卡名都是能访问外网的，如果不是外网网卡，那么VM就会与外界网络隔离。
 # local_ip 定义的是隧道网络，vxLan下 vm-linuxbridge->vxlan ------tun-----vxlan->linuxbridge-vm
@@ -262,16 +301,36 @@ openstack-config --set /etc/nova/nova.conf neutron region_name RegionOne
 openstack-config --set /etc/nova/nova.conf neutron project_name service 
 openstack-config --set /etc/nova/nova.conf neutron username neutron 
 openstack-config --set /etc/nova/nova.conf neutron password 123456
-#openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy True 
-#openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret 123456
+openstack-config --set /etc/nova/nova.conf neutron service_metadata_proxy True 
+openstack-config --set /etc/nova/nova.conf neutron metadata_proxy_shared_secret 123456
+# fixed problem：VirtualInterfaceCreateException: Virtual Interface creation failed
+openstack-config --set /etc/nova/nova.conf DEFAULT vif_plugging_is_fatal false
+openstack-config --set /etc/nova/nova.conf DEFAULT vif_plugging_timeout 0
+
+# 配置/etc/neutron/dhcp_agent.ini (配置DHCP代理)
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT debug False
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT interface_driver linuxbridge
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_driver neutron.agent.linux.dhcp.Dnsmasq
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT enable_isolated_metadata True
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT force_metadata True
+
+# 配置/etc/neutron/metadata_agent.ini
+openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_ip controller1
+openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT metadata_proxy_shared_secret 123456
+#openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT metadata_workers 4
+#openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT verbose True
+#openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT debug False
+#openstack-config --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_protocol http
+
 
 # 重启计算服务：
 systemctl restart openstack-nova-compute.service
 
 # 启动Linuxbridge代理并配置它开机自启动：
-systemctl enable neutron-linuxbridge-agent.service
-systemctl start neutron-linuxbridge-agent.service
-systemctl restart neutron-linuxbridge-agent.service
+systemctl enable neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service 
+systemctl start neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service 
+systemctl restart neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service 
+systemctl status neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service 
 
 
 

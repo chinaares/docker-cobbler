@@ -591,13 +591,12 @@ yum install -y openstack-neutron openstack-neutron-ml2 openstack-neutron-linuxbr
 cp /etc/neutron/neutron.conf /etc/neutron/neutron.conf.bak
 >/etc/neutron/neutron.conf
 openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
-#openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins router
-openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins ""
-openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
+openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins router
+openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips true
 openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
 openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:123456@controller1
-openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes True
-openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_data_changes True
+openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes true
+openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_data_changes true
 openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_uri http://controller1:5000
 openstack-config --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://controller1:35357 
 openstack-config --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers controller1:11211
@@ -620,30 +619,30 @@ openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var
 
 
 8、配置/etc/neutron/plugins/ml2/ml2_conf.ini （配置 Modular Layer 2 (ML2) 插件）
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers flat,vlan 
-#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers linuxbridge,l2population 
-#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers openvswitch,l2population 
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers linuxbridge 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers flat,vlan,vxlan 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers linuxbridge,l2population 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 extension_drivers port_security 
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types "" 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types vxlan 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 path_mtu 1500
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 1:1000 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset true
+#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers openvswitch,l2population 
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 physical_network_mtus physnet1:1500,physnet2:1500
-#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks *
-#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 1:1000 
+#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks *
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_gre tunnel_id_ranges 1:1000 
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vlan network_vlan_ranges physnet1,physnet2:1000:1030 
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset true
 
 9、配置/etc/neutron/plugins/ml2/linuxbridge_agent.ini （配置Linuxbridge代理）
-NIC=eth1
-IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+NIC1=eth1
+NIC2=eth2
+NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini DEFAULT debug false
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini linux_bridge physical_interface_mappings provider:$NIC
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan enable_vxlan false
-#openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan local_ip $IP
-#openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan l2_population true 
-#openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini agent prevent_arp_spoofing true
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini linux_bridge physical_interface_mappings provider:$NIC1,overlay:$NIC2
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan enable_vxlan true
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan local_ip $NIC2_IP
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan l2_population true 
+openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini agent prevent_arp_spoofing true
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup enable_security_group true 
 openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
 
@@ -653,8 +652,8 @@ openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygr
 # 10、配置 /etc/neutron/l3_agent.ini  (配置layer-3代理)
 #openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver neutron.agent.linux.interface.BridgeInterfaceDriver 
 #openstack-config --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge
-#openstack-config --set /etc/neutron/l3_agent.ini DEFAULT debug false
-#openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver linuxbridge
+openstack-config --set /etc/neutron/l3_agent.ini DEFAULT debug false
+openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver linuxbridge
 
 
 11、配置/etc/neutron/dhcp_agent.ini (配置DHCP代理)
@@ -707,8 +706,8 @@ systemctl restart neutron-server.service neutron-linuxbridge-agent.service neutr
 systemctl status neutron-server.service neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service
 
 19、启动neutron-l3-agent.service并设置开机启动
-#systemctl enable neutron-l3-agent.service 
-#systemctl restart neutron-l3-agent.service
+systemctl enable neutron-l3-agent.service 
+systemctl restart neutron-l3-agent.service
 systemctl status neutron-l3-agent.service
 
 20、执行验证
@@ -721,16 +720,24 @@ a. 首先先执行环境变量
 source /root/admin-openrc
 
 b. 创建flat模式的provider网络，注意这个provider是外出网络，必须是flat模式的
-neutron --debug net-create --shared provider --router:external true --provider:network_type flat --provider:physical_network provider
+openstack network create --share --external --provider-physical-network provider \
+  --provider-network-type flat provider1
+#neutron --debug net-create --shared provider --router:external true --provider:network_type flat --provider:physical_network provider
 修改命令：
 neutron --debug net-update provider --router:external
 # 执行完这步，在界面里进行操作，把public网络设置为共享和外部网络
 
 c. 创建public网络子网，名为public-sub，网段就是192.161.17，并且IP范围是51-80（这个一般是给VM用的floating IP了），dns设置为192.168.1.12，网关为192.161.17.1
-neutron subnet-create provider 192.161.17.0/24 --name provider-sub --allocation-pool start=192.161.17.65,end=192.161.17.80 --dns-nameserver 192.168.1.12 --gateway 192.161.17.1
+openstack subnet create --subnet-range 192.161.17.0/24 --gateway 192.161.17.1 \
+  --network provider1 --allocation-pool start=192.161.17.65,end=192.161.17.80 \
+  --dns-nameserver 192.168.1.12 provider1-v4
+
+#neutron subnet-create provider 192.161.17.0/24 --name provider-sub --allocation-pool start=192.161.17.65,end=192.161.17.80 --dns-nameserver 192.168.1.12 --gateway 192.161.17.1
 
 d. 创建名为private的私有网络, 网络模式为vxlan
-neutron net-create private --provider:network_type vxlan --router:external False --shared
+openstack network create --share --internal --provider-physical-network overlay \
+  --provider-network-type vxlan private1
+#neutron net-create private --provider:network_type vxlan --router:external False --shared
 
 e. 创建名为private-subnet的私有网络子网，网段为172.16.1.0, 这个网段就是虚拟机获取的私有的IP地址
 neutron subnet-create private --name private-subnet --gateway 172.16.1.1 172.16.1.0/24

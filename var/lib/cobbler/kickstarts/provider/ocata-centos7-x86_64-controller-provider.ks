@@ -584,7 +584,7 @@ openstack endpoint create --region RegionOne network internal http://controller1
 openstack endpoint create --region RegionOne network admin http://controller1:9696
 
 6、安装neutron相关软件
-yum install -y openstack-neutron openstack-neutron-ml2 openstack-neutron-linuxbridge ebtables
+yum install -y openstack-neutron openstack-neutron-ml2 ebtables 
 #yum install -y openstack-neutron openstack-neutron-ml2 openstack-neutron-openvswitch ebtables
 
 7、配置neutron配置文件/etc/neutron/neutron.conf （配置服务组件）
@@ -593,7 +593,9 @@ cp /etc/neutron/neutron.conf /etc/neutron/neutron.conf.bak
 openstack-config --set /etc/neutron/neutron.conf DEFAULT core_plugin ml2
 #openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins router
 openstack-config --set /etc/neutron/neutron.conf DEFAULT service_plugins ""
-openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
+#openstack-config --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips True
+openstack-config --set /etc/neutron/neutron.conf DEFAULT dhcp_agents_per_network 2
+openstack-config --set /etc/neutron/neutron.conf DEFAULT global_physnet_mtu 1500
 openstack-config --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
 openstack-config --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:123456@controller1
 openstack-config --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes True
@@ -628,13 +630,16 @@ openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 extension_drive
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types "" 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 path_mtu 1500
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 physical_network_mtus physnet1:1500,physnet2:1500
-#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks *
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider
+#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks *
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 1:1000 
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_gre tunnel_id_ranges 1:1000 
+# The provider value in the network_vlan_ranges option lacks VLAN ID ranges to support use of arbitrary VLAN IDs.
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vlan network_vlan_ranges physnet1,physnet2:1000:1030 
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset true
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vlan network_vlan_ranges provider
+#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset true
 
+---------------------------------------------------------------------------------------------------------------------
 9、配置/etc/neutron/plugins/ml2/linuxbridge_agent.ini （配置Linuxbridge代理）
 NIC=eth1
 IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
@@ -666,6 +671,7 @@ openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT debug false
 openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT interface_driver linuxbridge
 openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_driver neutron.agent.linux.dhcp.Dnsmasq
 openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT enable_isolated_metadata true
+---------------------------------------------------------------------------------------------------------------------
 
 12、重新配置/etc/nova/nova.conf，配置这步的目的是让compute节点能使用上neutron网络
 openstack-config --set /etc/nova/nova.conf neutron url http://controller1:9696 
@@ -701,6 +707,7 @@ su -s /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --co
 systemctl restart openstack-nova-api.service
 systemctl status openstack-nova-api.service
 
+---------------------------------------------------------------------------------------
 18、重启neutron服务并设置开机启动
 systemctl enable neutron-server.service neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service 
 systemctl restart neutron-server.service neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service
@@ -710,53 +717,47 @@ systemctl status neutron-server.service neutron-linuxbridge-agent.service neutro
 #systemctl enable neutron-l3-agent.service 
 #systemctl restart neutron-l3-agent.service
 systemctl status neutron-l3-agent.service
+---------------------------------------------------------------------------------------
+
+****** 重启neutron服务并设置开机启动
+systemctl enable neutron-server.service 
+systemctl restart neutron-server.service 
+systemctl status neutron-server.service 
+
 
 20、执行验证
+# Verify presence and operation of the agents:
 source /root/admin-openrc
 neutron ext-list
 neutron agent-list
+openstack network agent list
 
-21、创建vxLan模式网络，让虚拟机能外出
+21、创建初始模式网络
 a. 首先先执行环境变量
 source /root/admin-openrc
 
 b. 创建flat模式的provider网络，注意这个provider是外出网络，必须是flat模式的
-neutron --debug net-create --shared provider --router:external true --provider:network_type flat --provider:physical_network provider
+openstack network create --share --provider-physical-network provider \
+  --provider-network-type flat provider1
+#neutron --debug net-create --shared provider --router:external true --provider:network_type flat --provider:physical_network provider
 修改命令：
-neutron --debug net-update provider --router:external
+neutron --debug net-update provider1 --router:external
 # 执行完这步，在界面里进行操作，把public网络设置为共享和外部网络
+(注意：
+The share option allows any project to use this network. To limit access to provider networks, see Role-Based Access Control (RBAC).
+To create a VLAN network instead of a flat network, change --provider:network_type flat to --provider-network-type vlan and add --provider-segment with a value referencing the VLAN ID.
+)
 
-c. 创建public网络子网，名为public-sub，网段就是192.161.17，并且IP范围是51-80（这个一般是给VM用的floating IP了），dns设置为192.168.1.12，网关为192.161.17.1
-neutron subnet-create provider 192.161.17.0/24 --name provider-sub --allocation-pool start=192.161.17.65,end=192.161.17.80 --dns-nameserver 192.168.1.12 --gateway 192.161.17.1
+c. 在provider网络上创建IPv4网络子网，网段就是192.161.17，并且IP范围是51-80（这个一般是给VM用的floating IP了），dns设置为192.168.1.12，网关为192.161.17.1
+openstack subnet create --subnet-range 192.161.17.0/24 --gateway 192.161.17.1 \
+  --network provider1 --allocation-pool start=192.161.17.65,end=192.161.17.80 \
+  --dns-nameserver 192.168.1.12 provider1-v4
+#neutron subnet-create provider 192.161.17.0/24 --name provider-sub --allocation-pool start=192.161.17.65,end=192.161.17.80 --dns-nameserver 192.168.1.12 --gateway 192.161.17.1
 
-d. 创建名为private的私有网络, 网络模式为vxlan
-neutron net-create private --provider:network_type vxlan --router:external False --shared
-
-e. 创建名为private-subnet的私有网络子网，网段为172.16.1.0, 这个网段就是虚拟机获取的私有的IP地址
-neutron subnet-create private --name private-subnet --gateway 172.16.1.1 172.16.1.0/24
-neutron subnet-create private --name private --gateway 172.16.1.1 172.16.1.0/24 \
-  --dns-nameserver 192.168.1.12
-
-f. 创建路由
-neutron router-create router01
-# 在路由器添加一个私网子网接口：
-neutron router-interface-add router01 private-subnet
-# 在路由器上设置外部网络的网关：
-neutron router-gateway-set router01 provider
-
-g. 验证操作
-source admin-openrc.sh
-neutron router-port-list router01
-
-假如你们公司的私有云环境是用于不同的业务，比如行政、销售、技术等，那么你可以创建3个不同名称的私有网络
-neutron net-create private-office --provider:network_type vxlan --router:external False --shared
-neutron subnet-create private-office --name office-net --gateway 172.16.2.1 172.16.2.0/24
-
-neutron net-create private-sale --provider:network_type vxlan --router:external False --shared
-neutron subnet-create private-sale --name sale-net --gateway 172.16.3.1 172.16.3.0/24
-
-neutron net-create private-technology --provider:network_type vxlan --router:external False --shared
-neutron subnet-create private-technology --name technology-net --gateway 172.16.4.1 172.16.4.0/24
+d. 在provider网络上创建IPv6网络子网
+openstack subnet create --subnet-range fd00:203:0:113::/64 --gateway fd00:203:0:113::1 \
+  --ip-version 6 --ipv6-address-mode slaac --network provider1 \
+  --dns-nameserver 2001:4860:4860::8844 provider1-v6
 
 22、检查网络服务
 # neutron agent-list
@@ -798,7 +799,7 @@ yum install -y openstack-dashboard
 2、修改配置文件/etc/openstack-dashboard/local_settings
 (已修改好的文件直接下载：
 mv /etc/openstack-dashboard/local_settings /etc/openstack-dashboard/local_settings.bak
-wget -O /etc/openstack-dashboard/local_settings http://192.161.14.180/openstack/local_settings
+wget -O /etc/openstack-dashboard/local_settings http://192.161.14.180/openstack/local_settings-for-provider
 )
 # vi /etc/openstack-dashboard/local_settings
 加入或者修改为以下內容：
@@ -832,7 +833,10 @@ systemctl status httpd.service memcached.service
 
 到此，Controller节点搭建完毕，打开firefox浏览器即可访问http://controller1.local/dashboard(在客户端/etc/hosts中配置下名字解析)可进入openstack界面！
 
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic private_subnet testvm
+openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic net-id=provider1 testvm
+
+nova boot --flavor m1.tiny --image cirros-0.3.3-x86_64 --nic net-id=DEMO_NET_ID \
+      --security-group default --key-name demo-key demo-instance1
 
 ####################################################################################################
 #

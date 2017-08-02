@@ -120,6 +120,42 @@ systemctl start ntpd.service
 #yum update -y
 #yum install -y wget crudini net-tools vim ntpdate bash-completion
 #yum install -y openstack-packstack
+####################################################################################################
+问题列表
+1、/var/log/neutron/linuxbridge-agent.log 出现错误： RTNETLINK answers: File exists
+原因：
+  （
+  # vi /usr/lib/python2.7/site-packages/neutron/agent/linux/utils.py
+  152行：添加
+  LOG.debug(' '.join(cmd) + " TEST HOGE DEBUG11: %d", 9999)
+  # systemctl list-unit-files | egrep neutron | egrep enabled | awk '{print $1}' | xargs -i systemctl restart {}
+  ）
+   创建虚拟机，分配公共ip时执行的命令有错误：
+      ip -4 addr add 192.161.17.51/24 scope global dev brq99c79baa-9a brd 192.161.0.255
+解决方法：
+   1、provider网络接口的网卡，不要配置静态ip。
+   2、安装系统时可添加临时public ip
+        ip -4 addr add 192.161.17.55/24 dev eth1
+        route add default gw 192.161.17.1
+        ip -4 addr add 192.161.17.56/24 dev eth1
+        route add default gw 192.161.17.1
+      安装完成后执行：service network restart 配置即刻失效。
+
+
+2、/var/log/neutron/linuxbridge-agent.log 出现错误：RTNETLINK answers: Permission denied
+原因：
+    （
+  # vi /usr/lib/python2.7/site-packages/neutron/agent/linux/utils.py
+  152行：添加
+  LOG.debug(' '.join(cmd) + " TEST HOGE DEBUG11: %d", 9999)
+  # systemctl list-unit-files | egrep neutron | egrep enabled | awk '{print $1}' | xargs -i systemctl restart {}
+  ）
+   创建虚拟机，分配公共ip时执行的命令有错误：
+      ip -6 addr add fd3c:dfbd:20c3:d000:250:56ff:fe83:cd15/64 scope global dev brqd070a97c-c0
+解决方法：
+   禁用ipv6：
+   echo "net.ipv6.conf.all.disable_ipv6=1" >> /usr/lib/sysctl.d/00-system.conf
+   service network restart
 
 ####################################################################################################
 #
