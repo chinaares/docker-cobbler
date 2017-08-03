@@ -735,8 +735,14 @@ openstack subnet create --subnet-range 192.161.17.0/24 --gateway 192.161.17.1 \
 #neutron subnet-create provider 192.161.17.0/24 --name provider-sub --allocation-pool start=192.161.17.65,end=192.161.17.80 --dns-nameserver 192.168.1.12 --gateway 192.161.17.1
 
 d. 创建名为private的私有网络, 网络模式为vxlan
-openstack network create --share --internal --provider-physical-network overlay \
-  --provider-network-type vxlan private1
+openstack network create --share --internal \
+  --provider-network-type vxlan \
+   --provider-segment 92 \
+  private1
+openstack network create --share --internal \
+  --provider-network-type vxlan \
+   --provider-segment 95 \
+  private2
 #neutron net-create private --provider:network_type vxlan --router:external False --shared
 
 e. 创建名为private-subnet的私有网络子网，网段为172.16.1.0, 这个网段就是虚拟机获取的私有的IP地址
