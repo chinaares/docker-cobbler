@@ -584,8 +584,7 @@ openstack endpoint create --region RegionOne network internal http://controller1
 openstack endpoint create --region RegionOne network admin http://controller1:9696
 
 6、安装neutron相关软件
-yum install -y openstack-neutron openstack-neutron-ml2 openstack-neutron-linuxbridge ebtables
-#yum install -y openstack-neutron openstack-neutron-ml2 openstack-neutron-openvswitch ebtables
+yum install -y openstack-neutron openstack-neutron-ml2 openstack-neutron-openvswitch ebtables
 
 7、配置neutron配置文件/etc/neutron/neutron.conf （配置服务组件）
 cp /etc/neutron/neutron.conf /etc/neutron/neutron.conf.bak
@@ -617,10 +616,9 @@ openstack-config --set /etc/neutron/neutron.conf nova username nova
 openstack-config --set /etc/neutron/neutron.conf nova password 123456
 openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
 
-
 8、配置/etc/neutron/plugins/ml2/ml2_conf.ini （配置 Modular Layer 2 (ML2) 插件）
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers flat,vlan,vxlan 
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers linuxbridge,l2population 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers openvswitch,l2population 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 extension_drivers port_security 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types vxlan 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 path_mtu 1500
@@ -633,28 +631,39 @@ openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enabl
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_gre tunnel_id_ranges 1:1000 
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vlan network_vlan_ranges physnet1,physnet2:1000:1030 
 
-9、配置/etc/neutron/plugins/ml2/linuxbridge_agent.ini （配置Linuxbridge代理）
-NIC1=eth1
-NIC2=eth2
+8、创建OVS provider bridge 
+a)
+# 防止错误：ovs-vsctl: unix:/var/run/openvswitch/db.sock: database connection failed (No such file or directory)
+systemctl start openvswitch
+systemctl enable openvswitch
+systemctl status openvswitch
+b)创建OVS provider bridge
+ovs-vsctl add-br br-provider
+ovs-vsctl add-br br-int
+ovs-vsctl add-port br-provider eth1
+ovs-vsctl add-port br-int eth2
+
+9、配置/etc/neutron/plugins/ml2/openvswitch_agent.ini （配置openvswitch代理）
+NIC1=br-provider
+NIC2=br-int
 NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini DEFAULT debug false
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini linux_bridge physical_interface_mappings provider:$NIC1,overlay:$NIC2
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan enable_vxlan true
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan local_ip $NIC2_IP
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan l2_population true 
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini agent prevent_arp_spoofing true
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup enable_security_group true 
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT debug false
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$NIC1,overlay:$NIC2
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip $NIC2_IP
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent l2_population True 
+#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent prevent_arp_spoofing true
+#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group true 
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup firewall_driver iptables_hybrid
 
 # 注意: eno16777736(修改后为eth1)是连接外网的网卡，一般这里写的网卡名都是能访问外网的，如果不是外网网卡，那么VM就会与外界网络隔离。
-# local_ip 定义的是隧道网络，vxLan下 vm-linuxbridge->vxlan ------tun-----vxlan->linuxbridge-vm
+# local_ip 定义的是隧道网络，vxLan下 vm-openvswitch->vxlan ------tun-----vxlan->openvswitch-vm
 
 # 10、配置 /etc/neutron/l3_agent.ini  (配置layer-3代理)
 #openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver neutron.agent.linux.interface.BridgeInterfaceDriver 
-#openstack-config --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge
 openstack-config --set /etc/neutron/l3_agent.ini DEFAULT debug false
-openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver linuxbridge
-
+openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver openvswitch
+openstack-config --set /etc/neutron/l3_agent.ini DEFAULT external_network_bridge ""
 
 11、配置/etc/neutron/dhcp_agent.ini (配置DHCP代理)
 #openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT interface_driver neutron.agent.linux.interface.BridgeInterfaceDriver
@@ -662,7 +671,7 @@ openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver linuxb
 #openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT enable_isolated_metadata true
 #openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT verbose true
 openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT debug false
-openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT interface_driver linuxbridge
+openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT interface_driver openvswitch
 openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT dhcp_driver neutron.agent.linux.dhcp.Dnsmasq
 openstack-config --set /etc/neutron/dhcp_agent.ini DEFAULT enable_isolated_metadata true
 
@@ -701,9 +710,9 @@ systemctl restart openstack-nova-api.service
 systemctl status openstack-nova-api.service
 
 18、重启neutron服务并设置开机启动
-systemctl enable neutron-server.service neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service 
-systemctl restart neutron-server.service neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service
-systemctl status neutron-server.service neutron-linuxbridge-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service
+systemctl enable neutron-server.service neutron-openvswitch-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service 
+systemctl restart neutron-server.service neutron-openvswitch-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service
+systemctl status neutron-server.service neutron-openvswitch-agent.service neutron-dhcp-agent.service neutron-metadata-agent.service
 
 19、启动neutron-l3-agent.service并设置开机启动
 systemctl enable neutron-l3-agent.service 

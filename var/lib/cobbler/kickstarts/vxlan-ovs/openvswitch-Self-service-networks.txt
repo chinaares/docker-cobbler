@@ -1,0 +1,29 @@
+https://docs.openstack.org/ocata/networking-guide/deploy-ovs.html
+
+Open vSwitch mechanism driver
+ 
+UPDATED: 2017-08-02 12:57
+The Open vSwitch (OVS) mechanism driver uses a combination of OVS and Linux bridges as interconnection devices. However, optionally enabling the OVS native implementation of security groups removes the dependency on Linux bridges.
+
+We recommend using Open vSwitch version 2.4 or higher. Optional features may require a higher minimum version.
+
+Open vSwitch: Provider networks
+Prerequisites
+Architecture
+Example configuration
+Network traffic flow
+Open vSwitch: Self-service networks
+Prerequisites
+Architecture
+Example configuration
+Network traffic flow
+Open vSwitch: High availability using VRRP
+Prerequisites
+Architecture
+Example configuration
+Network traffic flow
+Open vSwitch: High availability using DVR
+Prerequisites
+Architecture
+Example configuration
+Network traffic flow

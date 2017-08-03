@@ -1,0 +1,22 @@
+https://docs.openstack.org/ocata/networking-guide/deploy-lb.html
+
+Linux bridge mechanism driver
+ 
+UPDATED: 2017-08-02 12:57
+The Linux bridge mechanism driver uses only Linux bridges and veth pairs as interconnection devices. A layer-2 agent manages Linux bridges on each compute node and any other node that provides layer-3 (routing), DHCP, metadata, or other network services.
+
+Linux bridge: Provider networks
+Prerequisites
+Architecture
+Example configuration
+Network traffic flow
+Linux bridge: Self-service networks
+Prerequisites
+Architecture
+Example configuration
+Network traffic flow
+Linux bridge: High availability using VRRP
+Prerequisites
+Architecture
+Example configuration
+Network traffic flow
