@@ -250,43 +250,84 @@ openstack-config --set /etc/neutron/neutron.conf keystone_authtoken username neu
 openstack-config --set /etc/neutron/neutron.conf keystone_authtoken password 123456
 #openstack-config --set /etc/neutron/neutron.conf database connection mysql+pymysql://neutron:123456@controller1/neutron
 openstack-config --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/neutron/tmp
-#openstack-config --set /etc/neutron/neutron.conf nova url http://controller1:9696
-#openstack-config --set /etc/neutron/neutron.conf nova auth_url http://controller1:35357
-#openstack-config --set /etc/neutron/neutron.conf nova auth_type password
-#openstack-config --set /etc/neutron/neutron.conf nova project_domain_name default
-#openstack-config --set /etc/neutron/neutron.conf nova user_domain_name default
-#openstack-config --set /etc/neutron/neutron.conf nova region_name RegionOne
-#openstack-config --set /etc/neutron/neutron.conf nova project_name service
-#openstack-config --set /etc/neutron/neutron.conf nova username nova
-#openstack-config --set /etc/neutron/neutron.conf nova password 123456
+openstack-config --set /etc/neutron/neutron.conf nova url http://controller1:9696
+openstack-config --set /etc/neutron/neutron.conf nova auth_url http://controller1:35357
+openstack-config --set /etc/neutron/neutron.conf nova auth_type password
+openstack-config --set /etc/neutron/neutron.conf nova project_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova user_domain_name default
+openstack-config --set /etc/neutron/neutron.conf nova region_name RegionOne
+openstack-config --set /etc/neutron/neutron.conf nova project_name service
+openstack-config --set /etc/neutron/neutron.conf nova username nova
+openstack-config --set /etc/neutron/neutron.conf nova password 123456
 
 # 配置网络选项 - 选择与您之前在控制节点上选择的相同的网络选项(这里为：自服务网络)
 # 8、配置/etc/neutron/plugins/ml2/ml2_conf.ini （配置 Modular Layer 2 (ML2) 插件）
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers flat,vlan,vxlan 
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers linuxbridge,l2population 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers openvswitch,l2population 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 extension_drivers port_security 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types vxlan 
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 path_mtu 1500
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks *
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 1:1000 
-openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset True
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset true
+#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers openvswitch,l2population 
+#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 physical_network_mtus physnet1:1500,physnet2:1500
+#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks *
+#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_gre tunnel_id_ranges 1:1000 
+#openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vlan network_vlan_ranges physnet1,physnet2:1000:1030 
 
-# 9、配置/etc/neutron/plugins/ml2/linuxbridge_agent.ini （配置Linuxbridge代理）
+# 9、配置/etc/neutron/plugins/ml2/openvswitch_agent.ini （配置openvswitch代理）
+PROVIDER=br-provider
+INT=br-int
 NIC1=eth1
 NIC2=eth2
 NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini DEFAULT debug false
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini linux_bridge physical_interface_mappings provider:$NIC1,overlay:$NIC2
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan enable_vxlan true
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan local_ip $NIC2_IP
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan l2_population true 
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini agent prevent_arp_spoofing true
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup enable_security_group true 
-openstack-config --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT debug false
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$PROVIDER,overlay:$INT
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip $NIC2_IP
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs of_interface ovs-ofctl
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent l2_population True 
+#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent prevent_arp_spoofing true
+#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group true 
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup firewall_driver iptables_hybrid
+
 
 # 注意: eno16777736(修改后为eth1)是连接外网的网卡，一般这里写的网卡名都是能访问外网的，如果不是外网网卡，那么VM就会与外界网络隔离。
-# local_ip 定义的是隧道网络，vxLan下 vm-linuxbridge->vxlan ------tun-----vxlan->linuxbridge-vm
+# local_ip 定义的是隧道网络，vxLan下 vm-openvswitch->vxlan ------tun-----vxlan->openvswitch-vm
 
+# 创建OVS provider bridge 
+a)
+# 防止错误：ovs-vsctl: unix:/var/run/openvswitch/db.sock: database connection failed (No such file or directory)
+systemctl start openvswitch
+systemctl enable openvswitch
+systemctl status openvswitch
+b)创建OVS provider bridge
+ovs-vsctl add-br br-provider
+ovs-vsctl add-port br-provider eth1
+(eth1为PROVIDER_INTERFACE)
+c) 修改网络接口配置文件
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-provider
+DEVICE=br-provider
+BOOTPROTO=static
+ONBOOT=yes
+NM_CONTROLLED=no
+IPADDR=192.161.17.51
+GATEWAY=192.161.17.1
+NETMASK=255.255.255.0
+DNS1=192.168.1.12
+TYPE=OVSBridge       # 指定为OVSBridge类型   
+DEVICETYPE=ovs        # 设备类型是ovs   
+EOF
+
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth1
+DEVICE=eth1
+ONBOOT=yes
+NM_CONTROLLED=no
+TYPE=OVSPort            # 指定为OVSPort类型  
+DEVICETYPE=ovs        # 设备类型是ovs  
+OVS_BRIDGE=br-provider    # 和br-provider ovs bridge关联   
+EOF
 
 # 配置计算服务来使用网络服务：重新配置/etc/nova/nova.conf，配置这步的目的是让compute节点能使用上neutron网络
 openstack-config --set /etc/nova/nova.conf neutron url http://controller1:9696 
@@ -304,11 +345,11 @@ openstack-config --set /etc/nova/nova.conf neutron password 123456
 # 重启计算服务：
 systemctl restart openstack-nova-compute.service
 
-# 启动Linuxbridge代理并配置它开机自启动：
-systemctl enable neutron-linuxbridge-agent.service
-systemctl start neutron-linuxbridge-agent.service
-systemctl restart neutron-linuxbridge-agent.service
-systemctl status neutron-linuxbridge-agent.service
+# 启动openvswitch代理并配置它开机自启动：
+systemctl enable neutron-openvswitch-agent.service
+#systemctl start neutron-openvswitch-agent.service
+systemctl restart neutron-openvswitch-agent.service
+systemctl status neutron-openvswitch-agent.service
 
 
 # Start final steps

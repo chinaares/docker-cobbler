@@ -624,6 +624,7 @@ openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 path_mtu 1500
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 1:1000 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan firewall_driver iptables_hybrid
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset true
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers openvswitch,l2population 
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 physical_network_mtus physnet1:1500,physnet2:1500
@@ -631,7 +632,28 @@ openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enabl
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_gre tunnel_id_ranges 1:1000 
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vlan network_vlan_ranges physnet1,physnet2:1000:1030 
 
-8、创建OVS provider bridge 
+9、配置/etc/neutron/plugins/ml2/openvswitch_agent.ini （配置openvswitch代理）
+PROVIDER=br-provider
+INT=br-int
+TUN=br-tun
+NIC1=eth1
+NIC2=eth2
+NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT debug false
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$PROVIDER,integration:$INT,tunnel:$TUN
+#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs tunnel_bridge $TUN
+#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs integration_bridge $INT
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip $NIC2_IP
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs of_interface ovs-ofctl
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent l2_population True 
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent prevent_arp_spoofing true
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group true 
+
+# 注意: eno16777736(修改后为eth1)是连接外网的网卡，一般这里写的网卡名都是能访问外网的，如果不是外网网卡，那么VM就会与外界网络隔离。
+# local_ip 定义的是隧道网络，vxLan下 vm-openvswitch->vxlan ------tun-----vxlan->openvswitch-vm
+
+# 创建OVS provider bridge 
 a)
 # 防止错误：ovs-vsctl: unix:/var/run/openvswitch/db.sock: database connection failed (No such file or directory)
 systemctl start openvswitch
@@ -639,25 +661,58 @@ systemctl enable openvswitch
 systemctl status openvswitch
 b)创建OVS provider bridge
 ovs-vsctl add-br br-provider
-ovs-vsctl add-br br-int
 ovs-vsctl add-port br-provider eth1
-ovs-vsctl add-port br-int eth2
-
-9、配置/etc/neutron/plugins/ml2/openvswitch_agent.ini （配置openvswitch代理）
-NIC1=br-provider
-NIC2=br-int
+ovs-vsctl add-port br-tun eth2
+(eth1为PROVIDER_INTERFACE)
+c) 修改网络接口配置文件
+NIC1=eth1
+NIC2=eth2
+NIC1_IP=`LANG=C ip addr show dev $NIC1 | grep 'inet '| grep $NIC1$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
 NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT debug false
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$NIC1,overlay:$NIC2
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip $NIC2_IP
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent l2_population True 
-#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent prevent_arp_spoofing true
-#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group true 
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup firewall_driver iptables_hybrid
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-provider
+DEVICE=br-provider
+BOOTPROTO=static
+ONBOOT=yes
+NM_CONTROLLED=no
+IPADDR=192.161.17.51
+GATEWAY=192.161.17.1
+NETMASK=255.255.255.0
+DNS1=192.168.1.12
+TYPE=OVSBridge       # 指定为OVSBridge类型   
+DEVICETYPE=ovs        # 设备类型是ovs   
+EOF
 
-# 注意: eno16777736(修改后为eth1)是连接外网的网卡，一般这里写的网卡名都是能访问外网的，如果不是外网网卡，那么VM就会与外界网络隔离。
-# local_ip 定义的是隧道网络，vxLan下 vm-openvswitch->vxlan ------tun-----vxlan->openvswitch-vm
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth1
+DEVICE=eth1
+ONBOOT=yes
+NM_CONTROLLED=no
+TYPE=OVSPort            # 指定为OVSPort类型  
+DEVICETYPE=ovs        # 设备类型是ovs  
+OVS_BRIDGE=br-provider    # 和br-provider ovs bridge关联   
+EOF
+
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-provider
+DEVICE=br-provider
+BOOTPROTO=static
+ONBOOT=yes
+NM_CONTROLLED=no
+IPADDR=192.161.17.51
+GATEWAY=192.161.17.1
+NETMASK=255.255.255.0
+DNS1=192.168.1.12
+TYPE=OVSBridge       # 指定为OVSBridge类型   
+DEVICETYPE=ovs        # 设备类型是ovs   
+EOF
+
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth1
+DEVICE=eth1
+ONBOOT=yes
+NM_CONTROLLED=no
+TYPE=OVSPort            # 指定为OVSPort类型  
+DEVICETYPE=ovs        # 设备类型是ovs  
+OVS_BRIDGE=br-provider    # 和br-provider ovs bridge关联   
+EOF
+
 
 # 10、配置 /etc/neutron/l3_agent.ini  (配置layer-3代理)
 #openstack-config --set /etc/neutron/l3_agent.ini DEFAULT interface_driver neutron.agent.linux.interface.BridgeInterfaceDriver 
@@ -733,6 +788,7 @@ openstack network create --share --external --provider-physical-network provider
   --provider-network-type flat provider1
 #neutron --debug net-create --shared provider --router:external true --provider:network_type flat --provider:physical_network provider
 修改命令：
+openstack network set --external provider1
 neutron --debug net-update provider --router:external
 # 执行完这步，在界面里进行操作，把public网络设置为共享和外部网络
 
@@ -756,15 +812,17 @@ openstack network create --share --internal \
 
 e. 创建名为private-subnet的私有网络子网，网段为172.16.1.0, 这个网段就是虚拟机获取的私有的IP地址
 neutron subnet-create private --name private-subnet --gateway 172.16.1.1 172.16.1.0/24
-neutron subnet-create private --name private --gateway 172.16.1.1 172.16.1.0/24 \
+neutron subnet-create private1 --name private1-v4-1 --gateway 172.16.1.1 172.16.1.0/24 \
+  --dns-nameserver 192.168.1.12
+neutron subnet-create private2 --name private2-v4-1 --gateway 172.16.2.1 172.16.2.0/24 \
   --dns-nameserver 192.168.1.12
 
 f. 创建路由
 neutron router-create router01
 # 在路由器添加一个私网子网接口：
-neutron router-interface-add router01 private-subnet
+neutron router-interface-add router01 private1-v4-1
 # 在路由器上设置外部网络的网关：
-neutron router-gateway-set router01 provider
+neutron router-gateway-set router01 provider1
 
 g. 验证操作
 source admin-openrc.sh
