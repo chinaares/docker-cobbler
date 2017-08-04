@@ -674,7 +674,7 @@ DEVICE=br-provider
 BOOTPROTO=static
 ONBOOT=yes
 NM_CONTROLLED=no
-IPADDR=192.161.17.51
+IPADDR=$NIC1_IP
 GATEWAY=192.161.17.1
 NETMASK=255.255.255.0
 DNS1=192.168.1.12
@@ -688,29 +688,27 @@ ONBOOT=yes
 NM_CONTROLLED=no
 TYPE=OVSPort            # 指定为OVSPort类型  
 DEVICETYPE=ovs        # 设备类型是ovs  
-OVS_BRIDGE=br-provider    # 和br-provider ovs bridge关联   
+OVS_BRIDGE=br-provider    # 和ovs bridge关联   
 EOF
 
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-provider
-DEVICE=br-provider
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-tun
+DEVICE=br-tun
 BOOTPROTO=static
 ONBOOT=yes
 NM_CONTROLLED=no
-IPADDR=192.161.17.51
-GATEWAY=192.161.17.1
+IPADDR=$NIC2_IP
 NETMASK=255.255.255.0
-DNS1=192.168.1.12
 TYPE=OVSBridge       # 指定为OVSBridge类型   
 DEVICETYPE=ovs        # 设备类型是ovs   
 EOF
 
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth1
-DEVICE=eth1
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth2
+DEVICE=eth2
 ONBOOT=yes
 NM_CONTROLLED=no
 TYPE=OVSPort            # 指定为OVSPort类型  
 DEVICETYPE=ovs        # 设备类型是ovs  
-OVS_BRIDGE=br-provider    # 和br-provider ovs bridge关联   
+OVS_BRIDGE=br-tun    # 和ovs bridge关联   
 EOF
 
 

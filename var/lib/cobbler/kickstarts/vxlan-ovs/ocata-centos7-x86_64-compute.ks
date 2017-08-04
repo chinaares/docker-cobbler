@@ -305,17 +305,18 @@ systemctl status openvswitch
 b)创建OVS provider bridge
 ovs-vsctl add-br br-provider
 ovs-vsctl add-port br-provider eth1
+ovs-vsctl add-port br-tun eth2
 (eth1为PROVIDER_INTERFACE)
 c) 修改网络接口配置文件
+NIC1=eth1
+NIC2=eth2
+NIC1_IP=`LANG=C ip addr show dev $NIC1 | grep 'inet '| grep $NIC1$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
 cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-provider
 DEVICE=br-provider
-BOOTPROTO=static
+BOOTPROTO=none
 ONBOOT=yes
 NM_CONTROLLED=no
-IPADDR=192.161.17.51
-GATEWAY=192.161.17.1
-NETMASK=255.255.255.0
-DNS1=192.168.1.12
 TYPE=OVSBridge       # 指定为OVSBridge类型   
 DEVICETYPE=ovs        # 设备类型是ovs   
 EOF
@@ -326,8 +327,30 @@ ONBOOT=yes
 NM_CONTROLLED=no
 TYPE=OVSPort            # 指定为OVSPort类型  
 DEVICETYPE=ovs        # 设备类型是ovs  
-OVS_BRIDGE=br-provider    # 和br-provider ovs bridge关联   
+OVS_BRIDGE=br-provider    # 和ovs bridge关联   
 EOF
+
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-tun
+DEVICE=br-tun
+BOOTPROTO=static
+ONBOOT=yes
+NM_CONTROLLED=no
+IPADDR=\$NIC2_IP
+NETMASK=255.255.255.0
+TYPE=OVSBridge       # 指定为OVSBridge类型   
+DEVICETYPE=ovs        # 设备类型是ovs   
+EOF
+
+cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth2
+DEVICE=eth2
+ONBOOT=yes
+NM_CONTROLLED=no
+TYPE=OVSPort            # 指定为OVSPort类型  
+DEVICETYPE=ovs        # 设备类型是ovs  
+OVS_BRIDGE=br-tun    # 和ovs bridge关联   
+EOF
+
+service network restart
 
 # 配置计算服务来使用网络服务：重新配置/etc/nova/nova.conf，配置这步的目的是让compute节点能使用上neutron网络
 openstack-config --set /etc/nova/nova.conf neutron url http://controller1:9696 
