@@ -842,11 +842,28 @@ openstack flavor create m1.large --id 4 --ram 8192 --disk 80 --vcpus 4
 openstack flavor create m1.xlarge --id 5 --ram 16384 --disk 160 --vcpus 8
 openstack flavor list
 
+openstack image list 
+
 openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --security-group default --nic net-id=provider1 testvm1
 openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --security-group default --nic net-id=private1 test1
 openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --security-group default --nic net-id=private2 test2
 
 openstack server list
+
+# alloc new floating ip
+floating_ip1=`openstack floating ip create provider1 | grep floating_ip_address | awk -F '|' '{ print $3 }'`
+openstack floating ip list
+echo $floating_ip1
+# retrive free floating ip
+floating_ip1=`openstack floating ip list --status DOWN | grep '| None             | None |' | head -n 1 | awk -F '|' '{ print $3 }'`
+echo $floating_ip1
+floating_ip2=`openstack floating ip list --status DOWN | grep '| None             | None |' | head -n 1 | awk -F '|' '{ print $3 }'`
+echo $floating_ip2
+# assign floating ip to a vm server instance
+openstack server add floating ip test1 $floating_ip1
+openstack server add floating ip test2 $floating_ip2
+openstack floating ip show $floating_ip1
+openstack floating ip show $floating_ip2
 
 openstack port list --router router01
 openstack port list --network private1
@@ -855,6 +872,23 @@ openstack port list --server testvm1
 openstack port list --server test1
 openstack port list --server test2
 openstack port list --device-owner network:dhcp
+
+# Configure security settings like follows to access with SSH and ICMP.
+openstack security group list
+openstack security group list --project admin
+
+# 多租户下，admin用户，会出现错误：
+# More than one SecurityGroup exists with the name 'default'.
+SecurityGroup_ID=`openstack security group list --project admin | grep 'default' | head -n 1 | awk -F '|' '{ print $2 }'`
+echo $SecurityGroup_ID
+# permit ICMP
+openstack security group rule create --protocol icmp --ingress $SecurityGroup_ID 
+openstack security group rule create --proto icmp default $SecurityGroup_ID 
+# permit SSH
+openstack security group rule create --protocol tcp --dst-port 22:22 $SecurityGroup_ID 
+openstack security group rule create --proto tcp --dst-port 22 default $SecurityGroup_ID 
+# list security group
+openstack security group rule list $SecurityGroup_ID 
 
 22、检查网络服务
 # neutron agent-list
