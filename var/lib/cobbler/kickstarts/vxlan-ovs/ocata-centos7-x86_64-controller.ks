@@ -769,55 +769,92 @@ openstack network create --share --external --provider-physical-network provider
 #neutron --debug net-create --shared provider --router:external true --provider:network_type flat --provider:physical_network provider
 修改命令：
 openstack network set --external provider1
-neutron --debug net-update provider --router:external
+#neutron --debug net-update provider --router:external
 # 执行完这步，在界面里进行操作，把public网络设置为共享和外部网络
 
 c. 创建public网络子网，名为public-sub，网段就是192.161.17，并且IP范围是51-80（这个一般是给VM用的floating IP了），dns设置为192.168.1.12，网关为192.161.17.1
 openstack subnet create --subnet-range 192.161.17.0/24 --gateway 192.161.17.1 \
   --network provider1 --allocation-pool start=192.161.17.65,end=192.161.17.80 \
-  --dns-nameserver 192.168.1.12 provider1-v4
-
+  --dns-nameserver 192.168.1.12 \
+  --no-dhcp \
+  provider1-v4
 #neutron subnet-create provider 192.161.17.0/24 --name provider-sub --allocation-pool start=192.161.17.65,end=192.161.17.80 --dns-nameserver 192.168.1.12 --gateway 192.161.17.1
 
 d. 创建名为private的私有网络, 网络模式为vxlan
 openstack network create --share --internal \
   --provider-network-type vxlan \
-   --provider-segment 92 \
   private1
 openstack network create --share --internal \
   --provider-network-type vxlan \
-   --provider-segment 95 \
   private2
 #neutron net-create private --provider:network_type vxlan --router:external False --shared
 
-e. 创建名为private-subnet的私有网络子网，网段为172.16.1.0, 这个网段就是虚拟机获取的私有的IP地址
-neutron subnet-create private1 --name private-subnet --gateway 172.16.0.1 172.16.0.0/24
-neutron subnet-create private1 --name private1-v4-1 --gateway 172.16.1.1 172.16.1.0/24 \
-  --dns-nameserver 192.168.1.12
-neutron subnet-create private2 --name private2-v4-1 --gateway 172.16.2.1 172.16.2.0/24 \
-  --dns-nameserver 192.168.1.12
+e. 创建私有网络子网,网段就是虚拟机获取的私有的IP地址
+openstack subnet create private1-v4-1 \
+  --network private1 \
+  --subnet-range 172.16.1.0/24 \
+  --gateway 172.16.1.1 \
+  --dns-nameserver 192.168.1.12 
+openstack subnet create private2-v4-1 \
+  --network private2 \
+  --subnet-range 172.16.2.0/24 \
+  --gateway 172.16.2.1 \
+  --dns-nameserver 192.168.1.12 
+openstack subnet create private2-v4-2 \
+  --network private2 \
+  --subnet-range 172.16.3.0/24 \
+  --gateway 172.16.3.1 \
+  --dns-nameserver 192.168.1.12 
+
+#neutron subnet-create private1 --name private1-v4-1 --gateway 172.16.1.1 172.16.1.0/24 \
+#  --dns-nameserver 192.168.1.12
+#neutron subnet-create private2 --name private2-v4-1 --gateway 172.16.2.1 172.16.2.0/24 \
+#  --dns-nameserver 192.168.1.12
 
 f. 创建路由
-neutron router-create router01
+openstack router create router01
+#neutron router-create router01
 # 在路由器添加一个私网子网接口：
-neutron router-interface-add router01 private1-v4-1
-neutron router-interface-add router01 private2-v4-1
+openstack router add subnet router01 private1-v4-1
+openstack router add subnet router01 private2-v4-1
+openstack router add subnet router01 private2-v4-2
+#neutron router-interface-add router01 private1-v4-1
+#neutron router-interface-add router01 private2-v4-1
 # 在路由器上设置外部网络的网关：
-neutron router-gateway-set router01 provider1
+openstack router set router01 --external-gateway provider1
+#neutron router-gateway-set router01 --external-gateway provider1
 
-g. 验证操作
+g. 验证网络使用操作
 source admin-openrc.sh
-neutron router-port-list router01
+# network id
+provider1_netID=`openstack network list | grep provider1 | awk '{ print $2 }'`
+private1_netID=`openstack network list | grep private1 | awk '{ print $2 }'`
+private2_netID=`openstack network list | grep private2 | awk '{ print $2 }'`
+# subnet id
+private1_1_subnetID=`openstack subnet list | grep private1-v4-1 | awk '{ print $2 }'`
+private2_1_subnetID=`openstack subnet list | grep private2-v4-1 | awk '{ print $2 }'`
+private2_2_subnetID=`openstack subnet list | grep private2-v4-2 | awk '{ print $2 }'`
 
-假如你们公司的私有云环境是用于不同的业务，比如行政、销售、技术等，那么你可以创建3个不同名称的私有网络
-neutron net-create private-office --provider:network_type vxlan --router:external False --shared
-neutron subnet-create private-office --name office-net --gateway 172.16.2.1 172.16.2.0/24
+openstack flavor create m1.tiny --id 1 --ram 512 --disk 1 --vcpus 1
+openstack flavor create m1.small --id 2 --ram 2048 --disk 20 --vcpus 1
+openstack flavor create m1.medium --id 3 --ram 4096 --disk 40 --vcpus 2
+openstack flavor create m1.large --id 4 --ram 8192 --disk 80 --vcpus 4
+openstack flavor create m1.xlarge --id 5 --ram 16384 --disk 160 --vcpus 8
+openstack flavor list
 
-neutron net-create private-sale --provider:network_type vxlan --router:external False --shared
-neutron subnet-create private-sale --name sale-net --gateway 172.16.3.1 172.16.3.0/24
+openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --security-group default --nic net-id=provider1 testvm1
+openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --security-group default --nic net-id=private1 test1
+openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --security-group default --nic net-id=private2 test2
 
-neutron net-create private-technology --provider:network_type vxlan --router:external False --shared
-neutron subnet-create private-technology --name technology-net --gateway 172.16.4.1 172.16.4.0/24
+openstack server list
+
+openstack port list --router router01
+openstack port list --network private1
+openstack port list --network private2
+openstack port list --server testvm1
+openstack port list --server test1
+openstack port list --server test2
+openstack port list --device-owner network:dhcp
 
 22、检查网络服务
 # neutron agent-list
@@ -895,17 +932,6 @@ systemctl status httpd.service memcached.service
 
 
 到此，Controller节点搭建完毕，打开firefox浏览器即可访问http://controller1.local/dashboard(在客户端/etc/hosts中配置下名字解析)可进入openstack界面！
-openstack flavor create m1.tiny --id 1 --ram 512 --disk 1 --vcpus 1
-openstack flavor create m1.small --id 2 --ram 2048 --disk 20 --vcpus 1
-openstack flavor create m1.medium --id 3 --ram 4096 --disk 40 --vcpus 2
-openstack flavor create m1.large --id 4 --ram 8192 --disk 80 --vcpus 4
-openstack flavor create m1.xlarge --id 5 --ram 16384 --disk 160 --vcpus 8
-openstack flavor list
-
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic net-id=provider1 testvm1
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --nic net-id=private1 test1
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --nic net-id=private2 test2
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --nic net-id=private1-v4-1 test3
 
 
 ####################################################################################################
