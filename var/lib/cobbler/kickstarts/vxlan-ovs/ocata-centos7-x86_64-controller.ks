@@ -148,17 +148,17 @@ systemctl list-unit-files |grep mariadb.service
 mysql_secure_installation
 # MQ install(user:openstack/123456)
 
-# mysql数据库最大连接数调整
-# 1.查看mariadb数据库最大连接数，默认为151
+# mysql数据库最大连接数调整  
+# 1.查看mariadb数据库最大连接数，默认为151  
 mysql -uroot -p123456 <<'EOF'
 show variables like 'max_connections';
 EOF
-# 2.配置/etc/my.cnf
-#[mysqld]新添加一行如下参数：
+# 2.配置/etc/my.cnf 
+#[mysqld]新添加一行如下参数：  
 # max_connections=1000
 sed -i '13i\max_connections=1000' /etc/my.cnf
 
-#重启mariadb服务，再次查看mariadb数据库最大连接数，可以看到最大连接数是214，并非我们设置的1000。(由于mariadb有默认打开文件数限制)
+#重启mariadb服务，再次查看mariadb数据库最大连接数，可以看到最大连接数是214，并非我们设置的1000。(由于mariadb有默认打开文件数限制)  
 systemctl restart mariadb.service
 mysql -uroot -p123456 <<'EOF'
 show variables like 'max_connections';
@@ -167,7 +167,7 @@ EOF
 # [Service]新添加两行如下参数：
 sed -i '/^\[Service\]/a\LimitNOFILE=10000\nLimitNPROC=10000' /usr/lib/systemd/system/mariadb.service
 
-# 4.重新加载系统服务，并重启mariadb服务
+# 4.重新加载系统服务，并重启mariadb服务  
 systemctl --system daemon-reload  
 systemctl restart mariadb.service 
 mysql -uroot -p123456 <<'EOF'
@@ -639,15 +639,14 @@ TUN=br-tun
 NIC1=eth1
 NIC2=eth2
 NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+echo $NIC2_IP
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT debug false
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$PROVIDER,integration:$INT,tunnel:$TUN
-#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs tunnel_bridge $TUN
-#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs integration_bridge $INT
+#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$PROVIDER,integration:$INT,tunnel:$TUN
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$PROVIDER,integration:$INT
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip $NIC2_IP
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs of_interface ovs-ofctl
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent l2_population True 
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent prevent_arp_spoofing true
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group true 
 
 # 注意: eno16777736(修改后为eth1)是连接外网的网卡，一般这里写的网卡名都是能访问外网的，如果不是外网网卡，那么VM就会与外界网络隔离。
@@ -656,20 +655,17 @@ openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygr
 # 创建OVS provider bridge 
 a)
 # 防止错误：ovs-vsctl: unix:/var/run/openvswitch/db.sock: database connection failed (No such file or directory)
-systemctl start openvswitch
 systemctl enable openvswitch
+systemctl restart openvswitch
 systemctl status openvswitch
-b)创建OVS provider bridge
-ovs-vsctl add-br br-provider
-ovs-vsctl add-port br-provider eth1
-ovs-vsctl add-port br-tun eth2
-(eth1为PROVIDER_INTERFACE)
-c) 修改网络接口配置文件
+b) 修改网络接口配置文件
 NIC1=eth1
 NIC2=eth2
 NIC1_IP=`LANG=C ip addr show dev $NIC1 | grep 'inet '| grep $NIC1$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
 NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-provider
+echo $NIC1_IP
+echo $NIC2_IP
+cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-br-provider
 DEVICE=br-provider
 BOOTPROTO=static
 ONBOOT=yes
@@ -682,7 +678,7 @@ TYPE=OVSBridge       # 指定为OVSBridge类型
 DEVICETYPE=ovs        # 设备类型是ovs   
 EOF
 
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth1
+cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-eth1
 DEVICE=eth1
 ONBOOT=yes
 NM_CONTROLLED=no
@@ -691,25 +687,11 @@ DEVICETYPE=ovs        # 设备类型是ovs
 OVS_BRIDGE=br-provider    # 和ovs bridge关联   
 EOF
 
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-tun
-DEVICE=br-tun
-BOOTPROTO=static
-ONBOOT=yes
-NM_CONTROLLED=no
-IPADDR=$NIC2_IP
-NETMASK=255.255.255.0
-TYPE=OVSBridge       # 指定为OVSBridge类型   
-DEVICETYPE=ovs        # 设备类型是ovs   
-EOF
-
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth2
-DEVICE=eth2
-ONBOOT=yes
-NM_CONTROLLED=no
-TYPE=OVSPort            # 指定为OVSPort类型  
-DEVICETYPE=ovs        # 设备类型是ovs  
-OVS_BRIDGE=br-tun    # 和ovs bridge关联   
-EOF
+service network restart
+c)创建OVS provider bridge
+ovs-vsctl add-br br-provider
+ovs-vsctl add-port br-provider eth1
+(eth1为PROVIDER_INTERFACE)
 
 
 # 10、配置 /etc/neutron/l3_agent.ini  (配置layer-3代理)
@@ -809,7 +791,7 @@ openstack network create --share --internal \
 #neutron net-create private --provider:network_type vxlan --router:external False --shared
 
 e. 创建名为private-subnet的私有网络子网，网段为172.16.1.0, 这个网段就是虚拟机获取的私有的IP地址
-neutron subnet-create private --name private-subnet --gateway 172.16.1.1 172.16.1.0/24
+neutron subnet-create private1 --name private-subnet --gateway 172.16.0.1 172.16.0.0/24
 neutron subnet-create private1 --name private1-v4-1 --gateway 172.16.1.1 172.16.1.0/24 \
   --dns-nameserver 192.168.1.12
 neutron subnet-create private2 --name private2-v4-1 --gateway 172.16.2.1 172.16.2.0/24 \
@@ -819,6 +801,7 @@ f. 创建路由
 neutron router-create router01
 # 在路由器添加一个私网子网接口：
 neutron router-interface-add router01 private1-v4-1
+neutron router-interface-add router01 private2-v4-1
 # 在路由器上设置外部网络的网关：
 neutron router-gateway-set router01 provider1
 
@@ -919,10 +902,10 @@ openstack flavor create m1.large --id 4 --ram 8192 --disk 80 --vcpus 4
 openstack flavor create m1.xlarge --id 5 --ram 16384 --disk 160 --vcpus 8
 openstack flavor list
 
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic net-id=private testvm1
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic net-id=private1 test1
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic net-id=private2 test2
-openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic net-id=private1-v4-1 test3
+openstack server create --image cirros-0.3.4-x86_64 --flavor m1.small --nic net-id=provider1 testvm1
+openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --nic net-id=private1 test1
+openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --nic net-id=private2 test2
+openstack server create --image cirros-0.3.4-x86_64 --flavor m1.tiny --nic net-id=private1-v4-1 test3
 
 
 ####################################################################################################

@@ -120,42 +120,6 @@ systemctl start ntpd.service
 #yum update -y
 #yum install -y wget crudini net-tools vim ntpdate bash-completion
 #yum install -y openstack-packstack
-####################################################################################################
-问题列表
-1、/var/log/neutron/linuxbridge-agent.log 出现错误： RTNETLINK answers: File exists
-原因：
-  （
-  # vi /usr/lib/python2.7/site-packages/neutron/agent/linux/utils.py
-  152行：添加
-  LOG.debug(' '.join(cmd) + " TEST HOGE DEBUG11: %d", 9999)
-  # systemctl list-unit-files | egrep neutron | egrep enabled | awk '{print $1}' | xargs -i systemctl restart {}
-  ）
-   创建虚拟机，分配公共ip时执行的命令有错误：
-      ip -4 addr add 192.161.17.51/24 scope global dev brq99c79baa-9a brd 192.161.0.255
-解决方法：
-   1、provider网络接口的网卡，不要配置静态ip。
-   2、安装系统时可添加临时public ip
-        ip -4 addr add 192.161.17.55/24 dev eth1
-        route add default gw 192.161.17.1
-        ip -4 addr add 192.161.17.56/24 dev eth1
-        route add default gw 192.161.17.1
-      安装完成后执行：service network restart 配置即刻失效。
-
-
-2、/var/log/neutron/linuxbridge-agent.log 出现错误：RTNETLINK answers: Permission denied
-原因：
-    （
-  # vi /usr/lib/python2.7/site-packages/neutron/agent/linux/utils.py
-  152行：添加
-  LOG.debug(' '.join(cmd) + " TEST HOGE DEBUG11: %d", 9999)
-  # systemctl list-unit-files | egrep neutron | egrep enabled | awk '{print $1}' | xargs -i systemctl restart {}
-  ）
-   创建虚拟机，分配公共ip时执行的命令有错误：
-      ip -6 addr add fd3c:dfbd:20c3:d000:250:56ff:fe83:cd15/64 scope global dev brqd070a97c-c0
-解决方法：
-   禁用ipv6：
-   echo "net.ipv6.conf.all.disable_ipv6=1" >> /usr/lib/sysctl.d/00-system.conf
-   service network restart
 
 ####################################################################################################
 #
@@ -269,6 +233,7 @@ openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 path_mtu 1500
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_flat flat_networks provider
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan vni_ranges 1:1000 
+openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2_type_vxlan firewall_driver iptables_hybrid
 openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enable_ipset true
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 mechanism_drivers openvswitch,l2population 
 #openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 physical_network_mtus physnet1:1500,physnet2:1500
@@ -279,19 +244,19 @@ openstack-config --set /etc/neutron/plugins/ml2/ml2_conf.ini securitygroup enabl
 # 9、配置/etc/neutron/plugins/ml2/openvswitch_agent.ini （配置openvswitch代理）
 PROVIDER=br-provider
 INT=br-int
+TUN=br-tun
 NIC1=eth1
 NIC2=eth2
 NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+echo $NIC2_IP
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini DEFAULT debug false
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$PROVIDER,overlay:$INT
+#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$PROVIDER,integration:$INT,tunnel:$TUN
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs bridge_mappings provider:$PROVIDER,integration:$INT
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs local_ip $NIC2_IP
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini ovs of_interface ovs-ofctl
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent tunnel_types vxlan
 openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent l2_population True 
-#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini agent prevent_arp_spoofing true
-#openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group true 
-openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup firewall_driver iptables_hybrid
-
+openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygroup enable_security_group true 
 
 # 注意: eno16777736(修改后为eth1)是连接外网的网卡，一般这里写的网卡名都是能访问外网的，如果不是外网网卡，那么VM就会与外界网络隔离。
 # local_ip 定义的是隧道网络，vxLan下 vm-openvswitch->vxlan ------tun-----vxlan->openvswitch-vm
@@ -299,20 +264,17 @@ openstack-config --set /etc/neutron/plugins/ml2/openvswitch_agent.ini securitygr
 # 创建OVS provider bridge 
 a)
 # 防止错误：ovs-vsctl: unix:/var/run/openvswitch/db.sock: database connection failed (No such file or directory)
-systemctl start openvswitch
 systemctl enable openvswitch
+systemctl restart openvswitch
 systemctl status openvswitch
-b)创建OVS provider bridge
-ovs-vsctl add-br br-provider
-ovs-vsctl add-port br-provider eth1
-ovs-vsctl add-port br-tun eth2
-(eth1为PROVIDER_INTERFACE)
-c) 修改网络接口配置文件
+b) 修改网络接口配置文件
 NIC1=eth1
 NIC2=eth2
 NIC1_IP=`LANG=C ip addr show dev $NIC1 | grep 'inet '| grep $NIC1$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
 NIC2_IP=`LANG=C ip addr show dev $NIC2 | grep 'inet '| grep $NIC2$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-provider
+echo $NIC1_IP
+echo $NIC2_IP
+cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-br-provider
 DEVICE=br-provider
 BOOTPROTO=none
 ONBOOT=yes
@@ -321,7 +283,20 @@ TYPE=OVSBridge       # 指定为OVSBridge类型
 DEVICETYPE=ovs        # 设备类型是ovs   
 EOF
 
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth1
+cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-br-provider
+DEVICE=br-provider
+BOOTPROTO=static
+ONBOOT=yes
+NM_CONTROLLED=no
+IPADDR=$NIC1_IP
+GATEWAY=192.161.17.1
+NETMASK=255.255.255.0
+DNS1=192.168.1.12
+TYPE=OVSBridge       # 指定为OVSBridge类型   
+DEVICETYPE=ovs        # 设备类型是ovs   
+EOF
+
+cat <<EOF > /etc/sysconfig/network-scripts/ifcfg-eth1
 DEVICE=eth1
 ONBOOT=yes
 NM_CONTROLLED=no
@@ -330,27 +305,11 @@ DEVICETYPE=ovs        # 设备类型是ovs
 OVS_BRIDGE=br-provider    # 和ovs bridge关联   
 EOF
 
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-br-tun
-DEVICE=br-tun
-BOOTPROTO=static
-ONBOOT=yes
-NM_CONTROLLED=no
-IPADDR=\$NIC2_IP
-NETMASK=255.255.255.0
-TYPE=OVSBridge       # 指定为OVSBridge类型   
-DEVICETYPE=ovs        # 设备类型是ovs   
-EOF
-
-cat <<'EOF' > /etc/sysconfig/network-scripts/ifcfg-eth2
-DEVICE=eth2
-ONBOOT=yes
-NM_CONTROLLED=no
-TYPE=OVSPort            # 指定为OVSPort类型  
-DEVICETYPE=ovs        # 设备类型是ovs  
-OVS_BRIDGE=br-tun    # 和ovs bridge关联   
-EOF
-
 service network restart
+c)创建OVS provider bridge
+ovs-vsctl add-br br-provider
+ovs-vsctl add-port br-provider eth1
+(eth1为PROVIDER_INTERFACE)
 
 # 配置计算服务来使用网络服务：重新配置/etc/nova/nova.conf，配置这步的目的是让compute节点能使用上neutron网络
 openstack-config --set /etc/nova/nova.conf neutron url http://controller1:9696 
