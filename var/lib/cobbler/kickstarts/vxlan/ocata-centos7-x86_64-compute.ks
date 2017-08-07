@@ -137,8 +137,13 @@ systemctl start ntpd.service
    2、安装系统时可添加临时public ip
         ip -4 addr add 192.161.17.55/24 dev eth1
         route add default gw 192.161.17.1
+        ip route del default
+        ip route add default via 192.161.17.1 dev eth1
         ip -4 addr add 192.161.17.56/24 dev eth1
         route add default gw 192.161.17.1
+        ip route del default
+        ip route add default via 192.161.17.1 dev eth1
+        
       安装完成后执行：service network restart 配置即刻失效。
 
 

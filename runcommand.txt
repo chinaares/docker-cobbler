@@ -133,11 +133,14 @@ cobbler system edit --name=network1 --interface eth2 --ip-address=10.1.1.59 --su
 cobbler system add --name=cinder1 --hostname=cinder1.local --dns-name=cinder1.local --profile=ocata-centos7-x86_64 \
 --mac=00:50:56:83:d2:33 --interface=eth0 \
 --static=1 --name-servers=192.168.1.12
-cobbler system edit --name=cinder1 --ksmeta="admin_ip=10.0.0.60 public_ip=192.161.17.60"
+cobbler system edit --name=cinder1 --ksmeta="admin_ip=10.0.0.60"
 cobbler system edit --name=cinder1 --interface eth0 --ip-address=10.0.0.60 --subnet=255.255.255.0 --static=1
-cobbler system edit --name=cinder1 --interface eth1 --ip-address=192.161.17.60 --subnet=255.255.255.0 --static=1 --if-gateway=192.161.17.1
-cobbler system edit --name=cinder1 --interface eth2 --ip-address=10.1.1.60 --subnet=255.255.255.0 --static=1
 
+cobbler system add --name=nfs1 --hostname=nfs1.local --dns-name=nfs1.local --profile=ocata-centos7-x86_64 \
+--mac=00:50:56:83:ea:20 --interface=eth0 \
+--static=1 --name-servers=192.168.1.12
+cobbler system edit --name=nfs1 --ksmeta="admin_ip=10.0.0.61"
+cobbler system edit --name=nfs1 --interface eth0 --ip-address=10.0.0.61 --subnet=255.255.255.0 --static=1
 
 
 cat <<'EOF' >> /etc/hosts
@@ -146,6 +149,7 @@ cat <<'EOF' >> /etc/hosts
 10.0.0.56 compute2
 10.0.0.59 network1
 10.0.0.60 cinder1
+10.0.0.61 nfs1
 EOF
 
 通过packstack安装openstack

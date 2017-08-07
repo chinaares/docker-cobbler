@@ -1065,7 +1065,7 @@ vgcreate cinder-volumes /dev/sdb
 
 4. 编辑存储节点lvm.conf文件 (注意！这一步是在cinder节点操作的）
 vi /etc/lvm/lvm.conf
-在devices 下面添加 filter = [ "a/sda/", "a/sdb/", "r/.*/"] ，130行 ，如图：
+在devices 下面添加 filter = [ "a/sda/", "a/sdb/", "r/.*/"] ，130行 ：
 sed -i '142i\        filter = [ "a/sda/", "a/sdb/", "r/.*/"]' /etc/lvm/lvm.conf
 
 然后重启下lvm2服务：
@@ -1085,7 +1085,7 @@ openstack-config --set /etc/cinder/cinder.conf DEFAULT verbose false
 openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
 # my_ip = MANAGEMENT_INTERFACE_IP_ADDRESS
 openstack-config --set /etc/cinder/cinder.conf DEFAULT my_ip $IP
-openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends lvm
+openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends lvm,nfs
 openstack-config --set /etc/cinder/cinder.conf DEFAULT glance_api_servers http://controller1:9292
 #openstack-config --set /etc/cinder/cinder.conf DEFAULT glance_api_version 2
 #openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v1_api true
@@ -1119,6 +1119,17 @@ systemctl restart openstack-cinder-volume.service target.service
 systemctl status openstack-cinder-volume.service target.service
 
 ********************cinder1节点操作*************************************************************>
+<********************nfs1节点操作*************************************************************
+# Configure Storage Node
+yum install -y nfs-utils
+
+# 编辑/etc/idmapd.conf，添加自定义域名：
+vi /etc/idmapd.conf
+在5行添加内容：
+sed -i '6i\Domain = local' /etc/idmapd.conf
+
+
+********************nfs1节点操作*************************************************************>
 <********************controller1节点操作*************************************************************
 # 验证cinder服务是否正常
 # 列出服务组件以验证是否每个进程都成功启动：
