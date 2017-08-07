@@ -117,9 +117,9 @@ sed -i '25i\server 10.0.0.51 iburst' /etc/ntp.conf
 systemctl enable ntpd.service
 systemctl start ntpd.service
 
-#yum update -y
-#yum install -y wget crudini net-tools vim ntpdate bash-completion
-#yum install -y openstack-packstack
+yum update -y
+yum install -y wget crudini net-tools vim ntpdate bash-completion
+yum install -y openstack-packstack
 
 ####################################################################################################
 #

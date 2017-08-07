@@ -1033,69 +1033,68 @@ openstack-config --set /etc/cinder/cinder.conf keystone_authtoken project_name s
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken username cinder
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken password 123456
 openstack-config --set /etc/cinder/cinder.conf oslo_concurrency lock_path /var/lib/cinder/tmp
-openstack-config --set /etc/cinder/cinder.conf DEFAULT os_region_name RegionOne
 
 7、初始化块设备服务的数据库
 su -s /bin/sh -c "cinder-manage db sync" cinder
 
-8、在controller1上启动cinder服务，并设置开机启动
+8、Configure Compute to use Block Storage
+openstack-config --set /etc/nova/nova.conf cinder os_region_name RegionOne
+
+9、Restart the Compute API service
+systemctl restart openstack-nova-api.service
+
+10、在controller1上启动cinder服务，并设置开机启动
 systemctl enable openstack-cinder-api.service openstack-cinder-scheduler.service 
 systemctl restart openstack-cinder-api.service openstack-cinder-scheduler.service 
 systemctl status openstack-cinder-api.service openstack-cinder-scheduler.service
 
-列出服务组件以验证是否每个进程都成功启动：
- cinder service-list
-+------------------+-------------------+------+---------+-------+----------------------------+-----------------+
-| Binary           | Host              | Zone | Status  | State | Updated_at                 | Disabled Reason |
-+------------------+-------------------+------+---------+-------+----------------------------+-----------------+
-| cinder-scheduler | controller1.local | nova | enabled | up    | 2017-07-25T03:11:12.000000 | -               |
-| cinder-volume    | cinder1.local@lvm | nova | enabled | up    | 2017-07-25T03:10:50.000000 | -               |
-+------------------+-------------------+------+---------+-------+----------------------------+-----------------+
-
 *********************controller1节点操作*************************************************************>
 <********************cinder1节点操作*************************************************************
-9、安装Cinder节点，Cinder节点这里我们需要额外的添加一个硬盘（/dev/sdb)用作cinder的存储服务 (注意！这一步是在cinder节点操作的）
+1、安装Cinder节点，Cinder节点这里我们需要额外的添加一个硬盘（/dev/sdb)用作cinder的存储服务 (注意！这一步是在cinder节点操作的）
 yum install -y lvm2
 
-10、启动服务并设置为开机自启 (注意！这一步是在cinder节点操作的）
+2、启动服务并设置为开机自启 (注意！这一步是在cinder节点操作的）
 systemctl enable lvm2-lvmetad.service
 systemctl start lvm2-lvmetad.service
 systemctl status lvm2-lvmetad.service
 
-11、创建lvm, 这里的/dev/sdb就是额外添加的硬盘 (注意！这一步是在cinder节点操作的）
+3、创建lvm, 这里的/dev/sdb就是额外添加的硬盘 (注意！这一步是在cinder节点操作的）
 fdisk -l
 pvcreate /dev/sdb
 vgcreate cinder-volumes /dev/sdb
 
-12. 编辑存储节点lvm.conf文件 (注意！这一步是在cinder节点操作的）
+4. 编辑存储节点lvm.conf文件 (注意！这一步是在cinder节点操作的）
 vi /etc/lvm/lvm.conf
 在devices 下面添加 filter = [ "a/sda/", "a/sdb/", "r/.*/"] ，130行 ，如图：
-
+sed -i '142i\        filter = [ "a/sda/", "a/sdb/", "r/.*/"]' /etc/lvm/lvm.conf
 
 然后重启下lvm2服务：
 systemctl restart lvm2-lvmetad.service
 systemctl status lvm2-lvmetad.service
 
-13、安装openstack-cinder、targetcli (注意！这一步是在cinder节点操作的）
-yum install -y openstack-cinder openstack-utils targetcli python-keystone ntpdate
+5、安装openstack-cinder、targetcli (注意！这一步是在cinder节点操作的）
+yum install -y openstack-cinder openstack-utils targetcli python-keystone
 
-14、配置cinder配置文件 (注意！这一步是在cinder节点操作的）
+6、配置cinder配置文件 (注意！这一步是在cinder节点操作的）
+NIC=eth0
+IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
 cp /etc/cinder/cinder.conf /etc/cinder/cinder.conf.bak
 >/etc/cinder/cinder.conf 
-openstack-config --set /etc/cinder/cinder.conf DEFAULT debug False
-openstack-config --set /etc/cinder/cinder.conf DEFAULT verbose true
+openstack-config --set /etc/cinder/cinder.conf DEFAULT debug false
+openstack-config --set /etc/cinder/cinder.conf DEFAULT verbose false
 openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
-openstack-config --set /etc/cinder/cinder.conf DEFAULT my_ip 10.0.0.60
+# my_ip = MANAGEMENT_INTERFACE_IP_ADDRESS
+openstack-config --set /etc/cinder/cinder.conf DEFAULT my_ip $IP
 openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends lvm
 openstack-config --set /etc/cinder/cinder.conf DEFAULT glance_api_servers http://controller1:9292
-openstack-config --set /etc/cinder/cinder.conf DEFAULT glance_api_version 2
-openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v1_api true
-openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v2_api true
-openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v3_api true
-openstack-config --set /etc/cinder/cinder.conf DEFAULT storage_availability_zone nova
-openstack-config --set /etc/cinder/cinder.conf DEFAULT default_availability_zone nova
-openstack-config --set /etc/cinder/cinder.conf DEFAULT os_region_name RegionOne
-openstack-config --set /etc/cinder/cinder.conf DEFAULT api_paste_config /etc/cinder/api-paste.ini
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT glance_api_version 2
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v1_api true
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v2_api true
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v3_api true
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT storage_availability_zone nova
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT default_availability_zone nova
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT os_region_name RegionOne
+#openstack-config --set /etc/cinder/cinder.conf DEFAULT api_paste_config /etc/cinder/api-paste.ini
 openstack-config --set /etc/cinder/cinder.conf DEFAULT transport_url rabbit://openstack:123456@controller1
 openstack-config --set /etc/cinder/cinder.conf database connection mysql+pymysql://cinder:123456@controller1/cinder
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken auth_uri http://controller1:5000
@@ -1107,35 +1106,49 @@ openstack-config --set /etc/cinder/cinder.conf keystone_authtoken user_domain_na
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken project_name service
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken username cinder
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken password 123456
+# configure the LVM back end with the LVM driver,cinder-volumes volume group
 openstack-config --set /etc/cinder/cinder.conf lvm volume_driver cinder.volume.drivers.lvm.LVMVolumeDriver
 openstack-config --set /etc/cinder/cinder.conf lvm volume_group cinder-volumes
 openstack-config --set /etc/cinder/cinder.conf lvm iscsi_protocol iscsi
 openstack-config --set /etc/cinder/cinder.conf lvm iscsi_helper lioadm
 openstack-config --set /etc/cinder/cinder.conf oslo_concurrency lock_path /var/lib/cinder/tmp
 
-15、启动openstack-cinder-volume和target并设置开机启动 (注意！这一步是在cinder节点操作的）
+7、启动openstack-cinder-volume和target并设置开机启动 (注意！这一步是在cinder节点操作的）
 systemctl enable openstack-cinder-volume.service target.service 
 systemctl restart openstack-cinder-volume.service target.service 
 systemctl status openstack-cinder-volume.service target.service
 
-16、验证cinder服务是否正常
+********************cinder1节点操作*************************************************************>
+<********************controller1节点操作*************************************************************
+# 验证cinder服务是否正常
+# 列出服务组件以验证是否每个进程都成功启动：
 source /root/admin-openrc
 cinder service-list
-********************cinder1节点操作*************************************************************>
-<********************compute节点操作*************************************************************
-配置计算节点以使用块设备存储
++------------------+-------------------+------+---------+-------+----------------------------+-----------------+
+| Binary           | Host              | Zone | Status  | State | Updated_at                 | Disabled Reason |
++------------------+-------------------+------+---------+-------+----------------------------+-----------------+
+| cinder-scheduler | controller1.local | nova | enabled | up    | 2017-08-07T06:00:14.000000 | -               |
+| cinder-volume    | cinder1.local@lvm | nova | enabled | up    | 2017-08-07T06:00:11.000000 | -               |
++------------------+-------------------+------+---------+-------+----------------------------+-----------------+
+
+openstack volume service list
++------------------+-------------------+------+---------+-------+----------------------------+
+| Binary           | Host              | Zone | Status  | State | Updated At                 |
++------------------+-------------------+------+---------+-------+----------------------------+
+| cinder-scheduler | controller1.local | nova | enabled | up    | 2017-08-07T06:00:14.000000 |
+| cinder-volume    | cinder1.local@lvm | nova | enabled | up    | 2017-08-07T06:00:11.000000 |
++------------------+-------------------+------+---------+-------+----------------------------+
+
+*********************controller1节点操作*************************************************************>
+<********************compute节点操作(官方文档提，其他文档有说配置)************************************
+#（按照官方文档，不配置compute节点，暂未发现问题。）
+# 配置计算节点以使用块设备存储
 # 编辑文件 /etc/nova/nova.conf 并添加如下到其中(每个compute节点都需要配置)：
 openstack-config --set /etc/nova/nova.conf cinder os_region_name RegionOne
 
-# 重启计算API 服务(controller1节点操作)：
-systemctl restart openstack-nova-api.service
-
-# 启动块设备存储服务，并将其配置为开机自启(controller1节点操作)：
-systemctl enable openstack-cinder-api.service openstack-cinder-scheduler.service
-systemctl start openstack-cinder-api.service openstack-cinder-scheduler.service
-
+# 重启计算服务：
+systemctl restart openstack-nova-compute.service
 ********************compute节点操作*************************************************************>
-
 
 
 ####################################################################################################
