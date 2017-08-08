@@ -99,6 +99,7 @@ cat <<'EOF' >> /etc/hosts
 10.0.0.56 compute2 compute2.local
 10.0.0.59 network1 network1.local
 10.0.0.60 cinder1 cinder1.local
+10.0.0.61 nfs1 nfs1.local
 EOF
 systemctl disable firewalld
 systemctl stop firewalld
@@ -1085,7 +1086,7 @@ openstack-config --set /etc/cinder/cinder.conf DEFAULT verbose false
 openstack-config --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
 # my_ip = MANAGEMENT_INTERFACE_IP_ADDRESS
 openstack-config --set /etc/cinder/cinder.conf DEFAULT my_ip $IP
-openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends lvm,nfs
+openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends lvm
 openstack-config --set /etc/cinder/cinder.conf DEFAULT glance_api_servers http://controller1:9292
 #openstack-config --set /etc/cinder/cinder.conf DEFAULT glance_api_version 2
 #openstack-config --set /etc/cinder/cinder.conf DEFAULT enable_v1_api true
@@ -1108,6 +1109,7 @@ openstack-config --set /etc/cinder/cinder.conf keystone_authtoken username cinde
 openstack-config --set /etc/cinder/cinder.conf keystone_authtoken password 123456
 # configure the LVM back end with the LVM driver,cinder-volumes volume group
 openstack-config --set /etc/cinder/cinder.conf lvm volume_driver cinder.volume.drivers.lvm.LVMVolumeDriver
+openstack-config --set /etc/cinder/cinder.conf lvm volume_backend_name lvm
 openstack-config --set /etc/cinder/cinder.conf lvm volume_group cinder-volumes
 openstack-config --set /etc/cinder/cinder.conf lvm iscsi_protocol iscsi
 openstack-config --set /etc/cinder/cinder.conf lvm iscsi_helper lioadm
@@ -1118,9 +1120,8 @@ systemctl enable openstack-cinder-volume.service target.service
 systemctl restart openstack-cinder-volume.service target.service 
 systemctl status openstack-cinder-volume.service target.service
 
-********************cinder1节点操作*************************************************************>
-<********************nfs1节点操作*************************************************************
-# Configure Storage Node
+#添加使用NFS共享
+1、安装软件包
 yum install -y nfs-utils
 
 # 编辑/etc/idmapd.conf，添加自定义域名：
@@ -1128,6 +1129,109 @@ vi /etc/idmapd.conf
 在5行添加内容：
 sed -i '6i\Domain = local' /etc/idmapd.conf
 
+2、创建/etc/cinder/nfs_shares文件，并写入如下内容
+# echo "<SERVER>:/<share>" > /etc/cinder/nfs_shares
+echo '10.0.0.61:/data'  > /etc/cinder/nfs_shares
+格式： 
+HOST 填写IP地址或是NFS服务器的主机名。 
+SHARE使已经存在的且可访问的NFS共享的绝对路径。 
+具体可以用showmount -e 10.0.0.61查看
+
+3、设置/etc/cinder/nfs_shares的属主为root用户，组为cinder。
+chown cinder:cinder /etc/cinder/nfs_shares
+
+4、设置/etc/cinder/nfs_shares为可由组cinder成员可读
+chmod 0640 /etc/cinder/nfs_shares
+
+#5、创建mount目录
+#mkdir /var/lib/cinder/mnt
+#chown -v cinder.cinder /var/lib/cinder/mnt
+
+5、配置/etc/cinder/cinder.conf
+# 启用lvm和nfs的backends（可以同时启用多种后端存储，以逗号隔开）
+openstack-config --set /etc/cinder/cinder.conf DEFAULT enabled_backends lvm,nfs
+openstack-config --set /etc/cinder/cinder.conf nfs volume_driver cinder.volume.drivers.nfs.NfsDriver
+openstack-config --set /etc/cinder/cinder.conf nfs volume_backend_name nfs
+openstack-config --set /etc/cinder/cinder.conf nfs nfs_shares_config /etc/cinder/nfs_shares
+#openstack-config --set /etc/cinder/cinder.conf nfs nfs_mount_point_base /var/lib/cinder/mnt
+
+#Verify the changes
+cat /etc/cinder/nfs_shares
+grep -i nfs /etc/cinder/cinder.conf | grep -v \#
+ 
+6、（可选），添加额外的NFS挂载点属性需要在你的环境中设置/etc/cinder/ 
+cinder.conf的nfs_mount_options 键值。如果你的NFS共享无须任何额外的挂载属性(或 
+者是你不能确定)的话，请忽略此步。
+openstack-config --set /etc/cinder/cinder.conf nfs nfs_mount_options OPTIONS
+
+8、（可选）配置卷是否作为稀疏文件创建并按需要分配或完全预先分配
+openstack-config --set /etc/cinder/cinder.conf nfs nfs_sparsed_volumes false
+#nfs_sparsed_volumes 配置关键字定义了卷是否作为稀疏文件创建并按需要分 
+#配或完全预先分配。默认和建议的值为 true，它会保证卷初始化创建为稀疏文件。 
+#设置 nfs_sparsed_volumes为false的结果就是在卷创建的时候就完全分配了。 
+#这会导致卷创建时间的延长。 
+
+#如果客户端主机启用了SELinux，若此主机需要访问NFS共享上的实例的话就需要 
+#设置virt_use_nfs布尔值。以root用户运行下面的命令：
+setsebool -P virt_use_nfs on
+setsebool virt_use_nfs
+
+9、重启cinder 卷服务：
+systemctl restart openstack-cinder-volume.service target.service 
+systemctl status openstack-cinder-volume.service target.service
+#for i in $( systemctl list-unit-files | awk ' /cinder/ { print $1 }'); do systemctl restart $i; done
+#for i in $( systemctl list-unit-files | awk ' /cinder/ { print $1 }'); do systemctl status $i; done
+
+
+10、在使用multi-backends创建盘之前，需要先创建卷的类型，dashboard及命令行cinder type-create都可以创建 
+#创建LVM
+openstack volume type create LVM
+cinder type-key LVM set volume_backend_name=lvm
+
+#创建NFS
+openstack volume type create NFS
+cinder type-key NFS set volume_backend_name=nfs
+
+# 查看配置
+openstack volume type list 
++--------------------------------------+------+-----------+
+| ID                                   | Name | Is Public |
++--------------------------------------+------+-----------+
+| 0c24ef4d-0d2b-4efc-9144-4e6c716ae570 | NFS  | True      |
+| 5405bd80-4564-496b-9913-360df1762711 | LVM  | True      |
++--------------------------------------+------+-----------+
+cinder extra-specs-list 
++--------------------------------------+------+--------------------------------+
+| ID                                   | Name | extra_specs                    |
++--------------------------------------+------+--------------------------------+
+| 0c24ef4d-0d2b-4efc-9144-4e6c716ae570 | NFS  | {'volume_backend_name': 'nfs'} |
+| 5405bd80-4564-496b-9913-360df1762711 | LVM  | {'volume_backend_name': 'lvm'} |
++--------------------------------------+------+--------------------------------+
+
+********************cinder1节点操作*************************************************************>
+<********************nfs1节点操作*************************************************************
+1、安装软件包
+yum install -y nfs-utils
+
+2、创建共享目录
+mkdir /data
+
+3、赋予权限
+cp /etc/exports /etc/exports.orig
+chmod 777 /data
+
+4、配置NFS
+echo '/data  *(rw,sync,no_root_squash)' >/etc/exports
+exportfs -rav
+#10.0.0.0/24为共享存储的网段 
+
+5、启动服务，并设置开机启动
+systemctl enable rpcbind.service nfs-server.service
+systemctl start rpcbind.service nfs-server.service
+systemctl status rpcbind.service nfs-server.service
+
+6、 verify the share is exported:
+showmount -e localhost
 
 ********************nfs1节点操作*************************************************************>
 <********************controller1节点操作*************************************************************
@@ -1149,7 +1253,6 @@ openstack volume service list
 | cinder-scheduler | controller1.local | nova | enabled | up    | 2017-08-07T06:00:14.000000 |
 | cinder-volume    | cinder1.local@lvm | nova | enabled | up    | 2017-08-07T06:00:11.000000 |
 +------------------+-------------------+------+---------+-------+----------------------------+
-
 *********************controller1节点操作*************************************************************>
 <********************compute节点操作(官方文档提，其他文档有说配置)************************************
 #（按照官方文档，不配置compute节点，暂未发现问题。）
@@ -1160,6 +1263,38 @@ openstack-config --set /etc/nova/nova.conf cinder os_region_name RegionOne
 # 重启计算服务：
 systemctl restart openstack-nova-compute.service
 ********************compute节点操作*************************************************************>
+<********************客户端节点操作************************************
+测试卷管理
+openstack volume create --type LVM --size 2 disk_lvm1 
+openstack volume create --type NFS --size 2 disk_nfs1 
+openstack volume list 
+openstack volume delete disk_lvm1
+# Attache volume to an instance.
+openstack server list 
++--------------------------------------+---------+--------+-------------------------------------+---------------------+----------+
+| ID                                   | Name    | Status | Networks                            | Image               | Flavor   |
++--------------------------------------+---------+--------+-------------------------------------+---------------------+----------+
+| e150b09c-a764-4cea-9241-36529a6c423d | test2   | ACTIVE | private2=172.16.2.12, 192.161.17.76 | cirros-0.3.4-x86_64 | m1.tiny  |
+| 847b794e-ad3e-4cf8-a0d2-a866925a7c48 | test1   | ACTIVE | private1=172.16.1.11, 192.161.17.71 | cirros-0.3.4-x86_64 | m1.tiny  |
+| 3155c808-1de7-414d-b9d4-02bb7a22871b | testvm1 | ACTIVE | provider1=192.161.17.67             | cirros-0.3.4-x86_64 | m1.small |
++--------------------------------------+---------+--------+-------------------------------------+---------------------+----------+
+openstack server add volume testvm1 disk_lvm1
+openstack server add volume testvm1 disk_nfs1
+
+# the status of attached disk turns "in-use" like follows
+openstack volume list
++--------------------------------------+-----------+-----------+------+----------------------------------+
+| ID                                   | Name      | Status    | Size | Attached to                      |
++--------------------------------------+-----------+-----------+------+----------------------------------+
+| 897e1d1e-b650-4c13-b9f2-dfed8ff52fbc | disk_nfs1 | in-use    |    2 | Attached to testvm1 on /dev/vdc  |
+| e374de89-c33b-444c-916c-7e7cab9b2457 | disk_lvm1 | in-use    |    1 | Attached to testvm1 on /dev/vdb  |
+| 4b49c36d-bd07-4d90-a91b-3de52c7a2784 | vol1      | available |    1 |                                  |
++--------------------------------------+-----------+-----------+------+----------------------------------+
+
+# detach the disk
+openstack server remove volume testvm1 disk_lvm1 
+
+********************客户端节点操作*************************************************************>
 
 
 ####################################################################################################

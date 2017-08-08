@@ -99,6 +99,7 @@ cat <<'EOF' >> /etc/hosts
 10.0.0.56 compute2 compute2.local
 10.0.0.59 network1 network1.local
 10.0.0.60 cinder1 cinder1.local
+10.0.0.61 nfs1 nfs1.local
 EOF
 systemctl disable firewalld
 systemctl stop firewalld
