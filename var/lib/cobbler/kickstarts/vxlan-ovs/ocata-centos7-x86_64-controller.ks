@@ -1208,6 +1208,15 @@ cinder extra-specs-list
 | 5405bd80-4564-496b-9913-360df1762711 | LVM  | {'volume_backend_name': 'lvm'} |
 +--------------------------------------+------+--------------------------------+
 
+# 附加1：***Configure with multiple NFS servers(配置多个NFS服务)***
+mkdir /data-new1
+mkdir /data-new2
+echo '10.0.0.61:/data-new1'  >> /etc/cinder/nfs_shares
+echo '10.0.0.61:/data-new1'  >> /etc/cinder/nfs_shares
+systemctl restart openstack-cinder-volume.service target.service 
+systemctl status openstack-cinder-volume.service target.service
+
+
 ********************cinder1节点操作*************************************************************>
 <********************nfs1节点操作*************************************************************
 1、安装软件包
@@ -1221,9 +1230,10 @@ cp /etc/exports /etc/exports.orig
 chmod 777 /data
 
 4、配置NFS
+#echo '/data  10.0.0.0/24(rw,sync,no_root_squash)' >/etc/exports
 echo '/data  *(rw,sync,no_root_squash)' >/etc/exports
 exportfs -rav
-#10.0.0.0/24为共享存储的网段 
+#10.0.0.0/24为共享存储的网段, *标识任意网段 
 
 5、启动服务，并设置开机启动
 systemctl enable rpcbind.service nfs-server.service
@@ -1232,6 +1242,19 @@ systemctl status rpcbind.service nfs-server.service
 
 6、 verify the share is exported:
 showmount -e localhost
+
+# 附加1：***Configure with multiple NFS servers(配置多个NFS服务)***
+mkdir /data-new1
+mkdir /data-new2
+chmod 777 /data-new1
+chmod 777 /data-new2
+echo '/data-new1  10.0.0.0/24(rw,sync,no_root_squash)' >>/etc/exports
+echo '/data-new2  10.0.0.0/24(rw,sync,no_root_squash)' >>/etc/exports
+exportfs -rav
+systemctl start rpcbind.service nfs-server.service
+systemctl status rpcbind.service nfs-server.service
+showmount -e localhost
+
 
 ********************nfs1节点操作*************************************************************>
 <********************controller1节点操作*************************************************************
