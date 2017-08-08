@@ -1212,7 +1212,7 @@ cinder extra-specs-list
 mkdir /data-new1
 mkdir /data-new2
 echo '10.0.0.61:/data-new1'  >> /etc/cinder/nfs_shares
-echo '10.0.0.61:/data-new1'  >> /etc/cinder/nfs_shares
+echo '10.0.0.61:/data-new2'  >> /etc/cinder/nfs_shares
 systemctl restart openstack-cinder-volume.service target.service 
 systemctl status openstack-cinder-volume.service target.service
 
