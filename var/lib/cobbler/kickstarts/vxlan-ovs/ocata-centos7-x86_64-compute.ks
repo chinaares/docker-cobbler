@@ -100,6 +100,8 @@ cat <<'EOF' >> /etc/hosts
 10.0.0.59 network1 network1.local
 10.0.0.60 cinder1 cinder1.local
 10.0.0.61 nfs1 nfs1.local
+10.0.0.62 object1 object1.local
+10.0.0.63 object2 object2.local
 EOF
 systemctl disable firewalld
 systemctl stop firewalld
@@ -117,7 +119,13 @@ sed -i 's/server .\.cn\.pool\.ntp\.org iburst/#&/g' /etc/ntp.conf
 sed -i '25i\server 10.0.0.51 iburst' /etc/ntp.conf
 systemctl enable ntpd.service
 systemctl start ntpd.service
+ntpq -p
 
+####################################################################################################
+#
+#       安装packstack
+#
+####################################################################################################
 yum update -y
 yum install -y wget crudini net-tools vim ntpdate bash-completion
 yum install -y openstack-packstack

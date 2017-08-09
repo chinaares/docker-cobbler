@@ -100,6 +100,8 @@ cat <<'EOF' >> /etc/hosts
 10.0.0.59 network1 network1.local
 10.0.0.60 cinder1 cinder1.local
 10.0.0.61 nfs1 nfs1.local
+10.0.0.62 object1 object1.local
+10.0.0.63 object2 object2.local
 EOF
 systemctl disable firewalld
 systemctl stop firewalld
@@ -113,9 +115,12 @@ setenforce 0
 yum install -y ntp
 sed -i 's/#restrict 192.168.1.0 mask 255.255.255.0 nomodify notrap/restrict 10.0.0.0 mask 255.255.255.0 nomodify no trap/g' /etc/ntp.conf
 sed -i 's/\.centos\.pool\.ntp\.org/\.cn\.pool\.ntp\.org/g' /etc/ntp.conf
+sed -i '25i\server  127.127.1.0     # local clock' /etc/ntp.conf
+sed -i '26i\fudge   127.127.1.0 stratum 10' /etc/ntp.conf
+
 systemctl enable ntpd.service
 systemctl start ntpd.service
-
+ntpq -p
 ####################################################################################################
 #
 #       安装packstack
@@ -1049,6 +1054,13 @@ systemctl enable openstack-cinder-api.service openstack-cinder-scheduler.service
 systemctl restart openstack-cinder-api.service openstack-cinder-scheduler.service 
 systemctl status openstack-cinder-api.service openstack-cinder-scheduler.service
 
+# 可选安装2：***Install and configure the backup service***
+# modify local_settings
+sed -i "s/'enable_backup': False,/'enable_backup': True,/g" /etc/openstack-dashboard/local_settings
+# restart servce
+systemctl restart httpd.service memcached.service
+systemctl status httpd.service memcached.service
+
 *********************controller1节点操作*************************************************************>
 <********************cinder1节点操作*************************************************************
 1、安装Cinder节点，Cinder节点这里我们需要额外的添加一个硬盘（/dev/sdb)用作cinder的存储服务 (注意！这一步是在cinder节点操作的）
@@ -1208,7 +1220,7 @@ cinder extra-specs-list
 | 5405bd80-4564-496b-9913-360df1762711 | LVM  | {'volume_backend_name': 'lvm'} |
 +--------------------------------------+------+--------------------------------+
 
-# 附加1：***Configure with multiple NFS servers(配置多个NFS服务)***
+# 可选安装1：***Configure with multiple NFS servers(配置多个NFS服务)***
 mkdir /data-new1
 mkdir /data-new2
 echo '10.0.0.61:/data-new1'  >> /etc/cinder/nfs_shares
@@ -1216,6 +1228,20 @@ echo '10.0.0.61:/data-new2'  >> /etc/cinder/nfs_shares
 systemctl restart openstack-cinder-volume.service target.service 
 systemctl status openstack-cinder-volume.service target.service
 
+# 可选安装2：***Install and configure the backup service***
+# (1)必须在cinder存储节点配置安装
+# (2)该配置依赖于对象存储服务swift
+# 1、确认已安装openstack-cinder
+# yum install openstack-cinder
+# 2、查询对象存储的URL
+openstack catalog show object-store
+# 3、Edit the /etc/cinder/cinder.conf file
+openstack-config --set /etc/cinder/cinder.conf DEFAULT backup_driver cinder.backup.drivers.swift
+openstack-config --set /etc/cinder/cinder.conf DEFAULT backup_swift_url 《SWIFT_URL》
+# 4、启动备份服务
+systemctl enable openstack-cinder-backup.service
+systemctl restart openstack-cinder-backup.service
+systemctl status openstack-cinder-backup.service
 
 ********************cinder1节点操作*************************************************************>
 <********************nfs1节点操作*************************************************************
@@ -1243,7 +1269,7 @@ systemctl status rpcbind.service nfs-server.service
 6、 verify the share is exported:
 showmount -e localhost
 
-# 附加1：***Configure with multiple NFS servers(配置多个NFS服务)***
+# 可选安装1：***Configure with multiple NFS servers(配置多个NFS服务)***
 mkdir /data-new1
 mkdir /data-new2
 chmod 777 /data-new1
@@ -1257,7 +1283,15 @@ showmount -e localhost
 
 
 ********************nfs1节点操作*************************************************************>
-<********************controller1节点操作*************************************************************
+<********************compute节点操作************************************
+# 配置计算节点以使用块设备存储
+# 编辑文件 /etc/nova/nova.conf 并添加如下到其中(每个compute节点都需要配置)：
+openstack-config --set /etc/nova/nova.conf cinder os_region_name RegionOne
+
+# 重启计算服务：
+systemctl restart openstack-nova-compute.service
+********************compute节点操作*************************************************************>
+<********************客户端节点操作************************************
 # 验证cinder服务是否正常
 # 列出服务组件以验证是否每个进程都成功启动：
 source /root/admin-openrc
@@ -1276,17 +1310,7 @@ openstack volume service list
 | cinder-scheduler | controller1.local | nova | enabled | up    | 2017-08-07T06:00:14.000000 |
 | cinder-volume    | cinder1.local@lvm | nova | enabled | up    | 2017-08-07T06:00:11.000000 |
 +------------------+-------------------+------+---------+-------+----------------------------+
-*********************controller1节点操作*************************************************************>
-<********************compute节点操作(官方文档提，其他文档有说配置)************************************
-#（按照官方文档，不配置compute节点，暂未发现问题。）
-# 配置计算节点以使用块设备存储
-# 编辑文件 /etc/nova/nova.conf 并添加如下到其中(每个compute节点都需要配置)：
-openstack-config --set /etc/nova/nova.conf cinder os_region_name RegionOne
 
-# 重启计算服务：
-systemctl restart openstack-nova-compute.service
-********************compute节点操作*************************************************************>
-<********************客户端节点操作************************************
 测试卷管理
 openstack volume create --type LVM --size 2 disk_lvm1 
 openstack volume create --type NFS --size 2 disk_nfs1 
@@ -1318,7 +1342,152 @@ openstack volume list
 openstack server remove volume testvm1 disk_lvm1 
 
 ********************客户端节点操作*************************************************************>
+####################################################################################################
+#
+#       安装配置swift对象存储
+#
+####################################################################################################
+<********************controller1节点操作*************************************************************
+# Object Storage service does not use an SQL database on the controller node. 
+# Instead, it uses distributed SQLite databases on each storage node.
+1、创建cinder用户并赋予admin权限
+source /root/admin-openrc
+openstack user create --domain default swift --password 123456
+openstack role add --project service --user swift admin
 
+2、创建swift服务
+openstack service create --name swift --description "OpenStack Object Storage" object-store
+
+3、创建endpoint
+openstack endpoint create --region RegionOne \
+  object-store public http://controller:8080/v1/AUTH_%\(tenant_id\)s
+openstack endpoint create --region RegionOne \
+  object-store internal http://controller:8080/v1/AUTH_%\(tenant_id\)s
+openstack endpoint create --region RegionOne \
+  object-store admin http://controller:8080/v1
+
+4、安装swift相关服务
+yum install -y openstack-swift-proxy python-swiftclient \
+  python-keystoneclient python-keystonemiddleware \
+  memcached
+
+5、配置cinder配置文件(/etc/swift/proxy-server.conf)
+curl -o /etc/swift/proxy-server.conf \
+  https://git.openstack.org/cgit/openstack/swift/plain/etc/proxy-server.conf-sample?h=stable/ocata
+openstack-config --set /etc/swift/proxy-server.conf DEFAULT bind_port 8080
+openstack-config --set /etc/swift/proxy-server.conf DEFAULT user swift
+openstack-config --set /etc/swift/proxy-server.conf DEFAULT swift_dir /etc/swift
+# Do not change the order of the modules.
+openstack-config --set /etc/swift/proxy-server.conf pipeline:main pipeline "catch_errors gatekeeper healthcheck proxy-logging cache container_sync bulk ratelimit authtoken keystoneauth container-quotas account-quotas slo dlo versioned_writes proxy-logging proxy-server"
+openstack-config --set /etc/swift/proxy-server.conf app:proxy-server use egg:swift#proxy 
+openstack-config --set /etc/swift/proxy-server.conf app:proxy-server account_autocreate True
+openstack-config --set /etc/swift/proxy-server.conf filter:keystoneauth use egg:swift#keystoneauth 
+openstack-config --set /etc/swift/proxy-server.conf filter:keystoneauth operator_roles admin,user
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken paste.filter_factory keystonemiddleware.auth_token:filter_factory
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken auth_uri http://controller1:5000
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken auth_url http://controller1:35357
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken memcached_servers controller1:11211
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken auth_type password
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken project_domain_name default
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken user_domain_name default
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken project_name service
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken username swift
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken password 123456
+openstack-config --set /etc/swift/proxy-server.conf filter:authtoken delay_auth_decision True
+openstack-config --set /etc/swift/proxy-server.conf filter:cache use egg:swift#memcache
+openstack-config --set /etc/swift/proxy-server.conf filter:cache memcache_servers controller1:11211
+
+*********************controller1节点操作*************************************************************>
+<********************object节点操作*************************************************************
+# 【每个object节点都需要执行以下步骤】
+# 每个object节点都需要三块逻辑盘：/dev/sdb and /dev/sdc devices 将作为XFS使用
+# 准备工作
+1、安装支持工具包
+yum install -y xfsprogs rsync
+
+2、格式化/dev/sdb and /dev/sdc devices为XFS
+#（测试虚拟机需要先添加两块盘，暂用大小100G）
+mkfs.xfs /dev/sdb
+mkfs.xfs /dev/sdc
+
+3、Create the mount point directory structure:
+mkdir -p /srv/node/sdb
+mkdir -p /srv/node/sdc
+
+4、Edit the /etc/fstab file and add the following to it:
+cat <<'EOF' >> /etc/fstab
+/dev/sdb /srv/node/sdb xfs noatime,nodiratime,nobarrier,logbufs=8 0 2
+/dev/sdc /srv/node/sdc xfs noatime,nodiratime,nobarrier,logbufs=8 0 2
+EOF
+
+5、Mount the devices:
+mount /srv/node/sdb
+mount /srv/node/sdc
+
+6、Create or edit the /etc/rsyncd.conf file to contain the following:
+NIC=eth0
+IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+cat <<EOF >> /etc/rsyncd.conf
+uid = swift
+gid = swift
+log file = /var/log/rsyncd.log
+pid file = /var/run/rsyncd.pid
+address = $IP
+
+[account]
+max connections = 2
+path = /srv/node/
+read only = False
+lock file = /var/lock/account.lock
+
+[container]
+max connections = 2
+path = /srv/node/
+read only = False
+lock file = /var/lock/container.lock
+
+[object]
+max connections = 2
+path = /srv/node/
+read only = False
+lock file = /var/lock/object.lock
+EOF
+
+7、Start the rsyncd service and configure it to start when the system boots:
+systemctl enable rsyncd.service
+systemctl start rsyncd.service
+
+# 安装配置组件
+1、Install the packages:
+yum install openstack-swift-account openstack-swift-container \
+  openstack-swift-object
+
+2、Obtain the accounting, container, and object service configuration files from the Object Storage source repository:
+curl -o /etc/swift/account-server.conf https://git.openstack.org/cgit/openstack/swift/plain/etc/account-server.conf-sample?h=stable/ocata
+curl -o /etc/swift/container-server.conf https://git.openstack.org/cgit/openstack/swift/plain/etc/container-server.conf-sample?h=stable/ocata
+curl -o /etc/swift/object-server.conf https://git.openstack.org/cgit/openstack/swift/plain/etc/object-server.conf-sample?h=stable/ocata
+
+3、Edit the /etc/swift/account-server.conf file and complete the following actions:
+NIC=eth0
+IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+openstack-config --set /etc/swift/account-server.conf DEFAULT bind_ip $IP
+openstack-config --set /etc/swift/account-server.conf DEFAULT bind_port 6202
+openstack-config --set /etc/swift/account-server.conf DEFAULT user swift
+openstack-config --set /etc/swift/account-server.conf DEFAULT swift_dir /etc/swift
+openstack-config --set /etc/swift/account-server.conf DEFAULT devices /srv/node
+openstack-config --set /etc/swift/account-server.conf DEFAULT mount_check True
+openstack-config --set /etc/swift/account-server.conf pipeline:main pipeline "healthcheck recon account-server"
+openstack-config --set /etc/swift/account-server.conf filter:recon use egg:swift#recon
+openstack-config --set /etc/swift/account-server.conf filter:recon recon_cache_path /var/cache/swift
+4、Edit the /etc/swift/container-server.conf file and complete the following actions:
+openstack-config --set /etc/swift/account-server.conf 
+openstack-config --set /etc/swift/account-server.conf 
+openstack-config --set /etc/swift/account-server.conf 
+openstack-config --set /etc/swift/account-server.conf 
+
+
+
+*********************object节点操作*************************************************************>
 
 ####################################################################################################
 #
