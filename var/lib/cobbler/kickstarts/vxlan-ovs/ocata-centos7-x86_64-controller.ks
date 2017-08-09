@@ -1360,11 +1360,11 @@ openstack service create --name swift --description "OpenStack Object Storage" o
 
 3、创建endpoint
 openstack endpoint create --region RegionOne \
-  object-store public http://controller:8080/v1/AUTH_%\(tenant_id\)s
+  object-store public http://controller1:8080/v1/AUTH_%\(tenant_id\)s
 openstack endpoint create --region RegionOne \
-  object-store internal http://controller:8080/v1/AUTH_%\(tenant_id\)s
+  object-store internal http://controller1:8080/v1/AUTH_%\(tenant_id\)s
 openstack endpoint create --region RegionOne \
-  object-store admin http://controller:8080/v1
+  object-store admin http://controller1:8080/v1
 
 4、安装swift相关服务
 yum install -y openstack-swift-proxy python-swiftclient \
@@ -1459,7 +1459,7 @@ systemctl start rsyncd.service
 
 # 安装配置组件
 1、Install the packages:
-yum install openstack-swift-account openstack-swift-container \
+yum install -y openstack-utils openstack-swift-account openstack-swift-container \
   openstack-swift-object
 
 2、Obtain the accounting, container, and object service configuration files from the Object Storage source repository:
@@ -1480,14 +1480,211 @@ openstack-config --set /etc/swift/account-server.conf pipeline:main pipeline "he
 openstack-config --set /etc/swift/account-server.conf filter:recon use egg:swift#recon
 openstack-config --set /etc/swift/account-server.conf filter:recon recon_cache_path /var/cache/swift
 4、Edit the /etc/swift/container-server.conf file and complete the following actions:
-openstack-config --set /etc/swift/account-server.conf 
-openstack-config --set /etc/swift/account-server.conf 
-openstack-config --set /etc/swift/account-server.conf 
-openstack-config --set /etc/swift/account-server.conf 
+NIC=eth0
+IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+openstack-config --set /etc/swift/container-server.conf DEFAULT bind_ip $IP
+openstack-config --set /etc/swift/container-server.conf DEFAULT bind_port 6201
+openstack-config --set /etc/swift/container-server.conf DEFAULT user swift
+openstack-config --set /etc/swift/container-server.conf DEFAULT swift_dir /etc/swift
+openstack-config --set /etc/swift/container-server.conf DEFAULT devices /srv/node
+openstack-config --set /etc/swift/container-server.conf DEFAULT mount_check True
+openstack-config --set /etc/swift/container-server.conf pipeline:main pipeline "healthcheck recon container-server"
+openstack-config --set /etc/swift/container-server.conf filter:recon use egg:swift#recon
+openstack-config --set /etc/swift/container-server.conf filter:recon recon_cache_path /var/cache/swift
+5、Edit the /etc/swift/object-server.conf file and complete the following actions:
+NIC=eth0
+IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+openstack-config --set /etc/swift/object-server.conf DEFAULT bind_ip $IP
+openstack-config --set /etc/swift/object-server.conf DEFAULT bind_port 6200
+openstack-config --set /etc/swift/object-server.conf DEFAULT user swift
+openstack-config --set /etc/swift/object-server.conf DEFAULT swift_dir /etc/swift
+openstack-config --set /etc/swift/object-server.conf DEFAULT devices /srv/node
+openstack-config --set /etc/swift/object-server.conf DEFAULT mount_check True
+openstack-config --set /etc/swift/object-server.conf pipeline:main pipeline "healthcheck recon object-server"
+openstack-config --set /etc/swift/object-server.conf filter:recon use egg:swift#recon
+openstack-config --set /etc/swift/object-server.conf filter:recon recon_cache_path /var/cache/swift
+openstack-config --set /etc/swift/object-server.conf filter:recon recon_lock_path /var/lock
 
+6、Ensure proper ownership of the mount point directory structure:
+chown -R swift:swift /srv/node
 
-
+7、Create the recon directory and ensure proper ownership of it:
+mkdir -p /var/cache/swift
+chown -R root:swift /var/cache/swift
+chmod -R 775 /var/cache/swift
 *********************object节点操作*************************************************************>
+<********************controller1节点（swift-proxy节点）操作*************************************************************
+# Create and distribute initial rings
+# Create account ring
+cd /etc/swift/
+swift-ring-builder account.builder create 10 3 1
+#Add each storage node to the ring:
+#swift-ring-builder account.builder \
+#  add --region 1 --zone 1 --ip STORAGE_NODE_MANAGEMENT_INTERFACE_IP_ADDRESS --port 6202 \
+#  --device DEVICE_NAME --weight DEVICE_WEIGHT
+swift-ring-builder account.builder add \
+  --region 1 --zone 1 --ip 10.0.0.62 --port 6202 --device sdb --weight 100
+swift-ring-builder account.builder add \
+  --region 1 --zone 1 --ip 10.0.0.62 --port 6202 --device sdc --weight 100
+swift-ring-builder account.builder add \
+  --region 1 --zone 2 --ip 10.0.0.63 --port 6202 --device sdb --weight 100
+swift-ring-builder account.builder add \
+  --region 1 --zone 2 --ip 10.0.0.63 --port 6202 --device sdc --weight 100
+#Verify the ring contents:
+swift-ring-builder account.builder
+#Rebalance the ring:
+swift-ring-builder account.builder rebalance
+
+# Create container ring
+cd /etc/swift/
+swift-ring-builder container.builder create 10 3 1
+#Add each storage node to the ring:
+# swift-ring-builder container.builder \
+#  add --region 1 --zone 1 --ip STORAGE_NODE_MANAGEMENT_INTERFACE_IP_ADDRESS --port 6201 \
+#  --device DEVICE_NAME --weight DEVICE_WEIGHT
+swift-ring-builder container.builder add \
+  --region 1 --zone 1 --ip 10.0.0.62 --port 6201 --device sdb --weight 100
+swift-ring-builder container.builder add \
+  --region 1 --zone 1 --ip 10.0.0.62 --port 6201 --device sdc --weight 100
+swift-ring-builder container.builder add \
+  --region 1 --zone 2 --ip 10.0.0.63 --port 6201 --device sdb --weight 100
+swift-ring-builder container.builder add \
+  --region 1 --zone 2 --ip 10.0.0.63 --port 6201 --device sdc --weight 100
+#Verify the ring contents:
+swift-ring-builder container.builder
+#Rebalance the ring:
+swift-ring-builder container.builder rebalance
+
+# Create object ring
+cd /etc/swift/
+swift-ring-builder object.builder create 10 3 1
+#Add each storage node to the ring:
+#swift-ring-builder object.builder \
+#  add --region 1 --zone 1 --ip STORAGE_NODE_MANAGEMENT_INTERFACE_IP_ADDRESS --port 6200 \
+#  --device DEVICE_NAME --weight DEVICE_WEIGHT
+swift-ring-builder object.builder add \
+  --region 1 --zone 1 --ip 10.0.0.62 --port 6200 --device sdb --weight 100
+swift-ring-builder object.builder add \
+  --region 1 --zone 1 --ip 10.0.0.62 --port 6200 --device sdc --weight 100
+swift-ring-builder object.builder add \
+  --region 1 --zone 2 --ip 10.0.0.63 --port 6200 --device sdb --weight 100
+swift-ring-builder object.builder add \
+  --region 1 --zone 2 --ip 10.0.0.63 --port 6200 --device sdc --weight 100
+#Verify the ring contents:
+swift-ring-builder object.builder
+#Rebalance the ring:
+swift-ring-builder object.builder rebalance
+
+# Distribute ring configuration files
+# Copy the account.ring.gz, container.ring.gz, and object.ring.gz files 
+# to the /etc/swift directory on each storage node and any additional nodes running the proxy service.
+scp /etc/swift/.ring.gz root@object1:/etc/swift
+scp /etc/swift/.ring.gz root@object2:/etc/swift
+*********************controller1节点（swift-proxy节点）操作*************************************************************>
+<********************controller1节点（swift-proxy节点）操作*************************************************************
+# 完成安装（ (在swift-proxy节点上执行)）
+1、Obtain the /etc/swift/swift.conf file from the Object Storage source repository:
+curl -o /etc/swift/swift.conf \
+  https://git.openstack.org/cgit/openstack/swift/plain/etc/swift.conf-sample?h=stable/ocata
+
+2、Edit the /etc/swift/swift.conf file and complete the following actions:
+HASH_PATH_SUFFIX=`openssl rand -hex 10`
+HASH_PATH_PREFIX=`openssl rand -hex 10`
+openstack-config --set /etc/swift/swift.conf swift-hash swift_hash_path_suffix $HASH_PATH_SUFFIX
+openstack-config --set /etc/swift/swift.conf swift-hash swift_hash_path_prefix $HASH_PATH_PREFIX
+openstack-config --set /etc/swift/swift.conf storage-policy:0 name Policy-0
+openstack-config --set /etc/swift/swift.conf storage-policy:0 default yes
+
+3、Copy the swift.conf file to the /etc/swift directory on each storage node and any additional nodes running the proxy service.
+scp /etc/swift/swift.conf root@object1:/etc/swift
+scp /etc/swift/swift.conf root@object2:/etc/swift
+
+4、On all nodes, ensure proper ownership of the configuration directory:
+ssh root@controller1 chown -R root:swift /etc/swift
+ssh root@object1 chown -R root:swift /etc/swift
+ssh root@object2 chown -R root:swift /etc/swift
+
+5、On the controller node and any other nodes running the proxy service, 
+start the Object Storage proxy service including its dependencies and configure them to start when the system boots:
+#ssh root@controller1 systemctl enable openstack-swift-proxy.service memcached.service
+#ssh root@controller1 systemctl restart openstack-swift-proxy.service memcached.service
+#ssh root@controller1 systemctl status openstack-swift-proxy.service memcached.service
+systemctl enable openstack-swift-proxy.service memcached.service
+systemctl restart openstack-swift-proxy.service memcached.service
+systemctl status openstack-swift-proxy.service memcached.service
+
+6、On the storage nodes, start the Object Storage services and configure them to start when the system boots:
+(object1 and object2 nodes)
+systemctl enable openstack-swift-account.service openstack-swift-account-auditor.service \
+  openstack-swift-account-reaper.service openstack-swift-account-replicator.service
+systemctl restart openstack-swift-account.service openstack-swift-account-auditor.service \
+  openstack-swift-account-reaper.service openstack-swift-account-replicator.service
+systemctl status openstack-swift-account.service openstack-swift-account-auditor.service \
+  openstack-swift-account-reaper.service openstack-swift-account-replicator.service
+systemctl enable openstack-swift-container.service \
+  openstack-swift-container-auditor.service openstack-swift-container-replicator.service \
+  openstack-swift-container-updater.service
+systemctl restart openstack-swift-container.service \
+  openstack-swift-container-auditor.service openstack-swift-container-replicator.service \
+  openstack-swift-container-updater.service
+systemctl status openstack-swift-container.service \
+  openstack-swift-container-auditor.service openstack-swift-container-replicator.service \
+  openstack-swift-container-updater.service
+systemctl enable openstack-swift-object.service openstack-swift-object-auditor.service \
+  openstack-swift-object-replicator.service openstack-swift-object-updater.service
+systemctl restart openstack-swift-object.service openstack-swift-object-auditor.service \
+  openstack-swift-object-replicator.service openstack-swift-object-updater.service
+systemctl status openstack-swift-object.service openstack-swift-object-auditor.service \
+  openstack-swift-object-replicator.service openstack-swift-object-updater.service
+
+*********************controller1节点（swift-proxy节点）操作*************************************************************>
+<********************controller1节点（swift-proxy节点）操作*************************************************************
+# Verify operation of the Object Storage service.
+source /root/admin-openrc
+#Show the service status:
+swift stat
+ swift stat
+               Account: AUTH_a5ada618d57d4e2ba784b4c93ab03681
+            Containers: 0
+               Objects: 0
+                 Bytes: 0
+       X-Put-Timestamp: 1502278035.22930
+           X-Timestamp: 1502278035.22930
+            X-Trans-Id: txb3345c31a2fd4e92ae3d6-00598af192
+          Content-Type: text/plain; charset=utf-8
+X-Openstack-Request-Id: txb3345c31a2fd4e92ae3d6-00598af192
+
+#Create container1 container:
+openstack container create container1
++---------------------------------------+------------+------------------------------------+
+| account                               | container  | x-trans-id                         |
++---------------------------------------+------------+------------------------------------+
+| AUTH_a5ada618d57d4e2ba784b4c93ab03681 | container1 | txf96b80a7b79e40efb04eb-00598af1e9 |
++---------------------------------------+------------+------------------------------------+
+
+#Upload a test file to the container1 container:
+#openstack object create <container> <FILE>
+openstack object create container1 /root/ks-post.log
++-------------------+------------+----------------------------------+
+| object            | container  | etag                             |
++-------------------+------------+----------------------------------+
+| /root/ks-post.log | container1 | 4d756861e750f718835b05c772c7b05f |
++-------------------+------------+----------------------------------+
+
+#List files in the container1 container:
+openstack object list container1
++-------------------+
+| Name              |
++-------------------+
+| /root/ks-post.log |
++-------------------+
+
+#Download a test file from the container1 container:
+#openstack object save <container> <FILE>
+openstack object save container1 /root/ks-post.log
+openstack object save container1 /root/ks-post.log --file test.txt
+
+*********************controller1节点（swift-proxy节点）操作*************************************************************>
 
 ####################################################################################################
 #
