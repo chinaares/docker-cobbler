@@ -1232,12 +1232,12 @@ systemctl status openstack-cinder-volume.service target.service
 # (1)必须在cinder存储节点配置安装
 # (2)该配置依赖于对象存储服务swift
 # 1、确认已安装openstack-cinder
-# yum install openstack-cinder
+yum install -y openstack-cinder
 # 2、查询对象存储的URL
 openstack catalog show object-store
 # 3、Edit the /etc/cinder/cinder.conf file
 openstack-config --set /etc/cinder/cinder.conf DEFAULT backup_driver cinder.backup.drivers.swift
-openstack-config --set /etc/cinder/cinder.conf DEFAULT backup_swift_url 《SWIFT_URL》
+openstack-config --set /etc/cinder/cinder.conf DEFAULT backup_swift_url http://controller1:8080/v1
 # 4、启动备份服务
 systemctl enable openstack-cinder-backup.service
 systemctl restart openstack-cinder-backup.service
@@ -1638,7 +1638,7 @@ systemctl status openstack-swift-object.service openstack-swift-object-auditor.s
   openstack-swift-object-replicator.service openstack-swift-object-updater.service
 
 *********************controller1节点（swift-proxy节点）操作*************************************************************>
-<********************controller1节点（swift-proxy节点）操作*************************************************************
+<********************客户端节点操作*************************************************************
 # Verify operation of the Object Storage service.
 source /root/admin-openrc
 #Show the service status:
@@ -1684,7 +1684,7 @@ openstack object list container1
 openstack object save container1 /root/ks-post.log
 openstack object save container1 /root/ks-post.log --file test.txt
 
-*********************controller1节点（swift-proxy节点）操作*************************************************************>
+*********************客户端节点操作*************************************************************>
 
 ####################################################################################################
 #
