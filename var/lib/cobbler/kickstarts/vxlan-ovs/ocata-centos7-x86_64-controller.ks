@@ -1688,6 +1688,374 @@ openstack object save container1 /root/ks-post.log --file test.txt
 
 ####################################################################################################
 #
+#       安装配置heat
+#
+####################################################################################################
+# Prerequisites
+# 1. create database
+mysql -uroot -p123456 <<'EOF'
+CREATE DATABASE heat;
+EOF
+# Grant proper access to the heat database:
+mysql -uroot -p123456 <<'EOF'
+GRANT ALL PRIVILEGES ON heat.* TO 'heat'@'localhost' \
+  IDENTIFIED BY '123456';
+GRANT ALL PRIVILEGES ON heat.* TO 'heat'@'%' \
+  IDENTIFIED BY '123456';
+EOF
+# verify
+mysql -Dheat -uheat -p123456 <<'EOF'
+quit
+EOF
+
+
+# 2. Source the admin credentials to gain access to admin-only CLI commands:
+source /root/admin-openrc
+
+# 3. To create the service credentials
+openstack user create --domain default heat --password 123456
+openstack role add --project service --user heat admin
+# Create the heat and heat-cfn service entities:
+openstack service create --name heat \
+  --description "Orchestration" orchestration
+openstack service create --name heat-cfn \
+  --description "Orchestration"  cloudformation
+
+# 4. Create the Orchestration service API endpoints:
+openstack endpoint create --region RegionOne \
+  orchestration public http://controller1:8004/v1/%\(tenant_id\)s
+openstack endpoint create --region RegionOne \
+  orchestration internal http://controller1:8004/v1/%\(tenant_id\)s
+openstack endpoint create --region RegionOne \
+  orchestration admin http://controller1:8004/v1/%\(tenant_id\)s
+openstack endpoint create --region RegionOne \
+  cloudformation public http://controller1:8000/v1
+openstack endpoint create --region RegionOne \
+  cloudformation internal http://controller1:8000/v1
+openstack endpoint create --region RegionOne \
+  cloudformation admin http://controller1:8000/v1
+
+# 5. Orchestration requires additional information in the Identity service to manage stacks. To add this information, complete these steps:
+openstack domain create --description "Stack projects and users" heat
+openstack user create --domain heat heat_domain_admin --password 123456
+openstack role add --domain heat --user-domain heat --user heat_domain_admin admin
+openstack role create heat_stack_owner
+openstack role add --project demo --user demo heat_stack_owner
+openstack role create heat_stack_user
+
+# Install and configure components
+# 1. Install the packages:
+yum install -y openstack-heat-api openstack-heat-api-cfn \
+  openstack-heat-engine
+
+# 2. Edit the /etc/heat/heat.conf file and complete the following actions:
+openstack-config --set /etc/heat/heat.conf database connection mysql+pymysql://heat:123456@controller1/heat
+openstack-config --set /etc/heat/heat.conf DEFAULT transport_url rabbit://openstack:123456@controller1
+openstack-config --set /etc/heat/heat.conf DEFAULT heat_metadata_server_url http://controller1:8000
+openstack-config --set /etc/heat/heat.conf DEFAULT heat_waitcondition_server_url http://controller1:8000/v1/waitcondition
+openstack-config --set /etc/heat/heat.conf DEFAULT stack_domain_admin heat_domain_admin
+openstack-config --set /etc/heat/heat.conf DEFAULT stack_domain_admin_password 123456
+openstack-config --set /etc/heat/heat.conf DEFAULT stack_user_domain_name heat
+openstack-config --set /etc/heat/heat.conf keystone_authtoken auth_uri http://controller1:5000
+openstack-config --set /etc/heat/heat.conf keystone_authtoken auth_url http://controller1:35357
+openstack-config --set /etc/heat/heat.conf keystone_authtoken memcached_servers controller1:11211
+openstack-config --set /etc/heat/heat.conf keystone_authtoken auth_type password
+openstack-config --set /etc/heat/heat.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/heat/heat.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/heat/heat.conf keystone_authtoken project_name service
+openstack-config --set /etc/heat/heat.conf keystone_authtoken username heat
+openstack-config --set /etc/heat/heat.conf keystone_authtoken password 123456
+openstack-config --set /etc/heat/heat.conf trustee auth_type password
+openstack-config --set /etc/heat/heat.conf trustee auth_url http://controller1:35357
+openstack-config --set /etc/heat/heat.conf trustee username heat
+openstack-config --set /etc/heat/heat.conf trustee password 123456
+openstack-config --set /etc/heat/heat.conf trustee user_domain_name default
+openstack-config --set /etc/heat/heat.conf clients_keystone auth_uri http://controller1:35357
+openstack-config --set /etc/heat/heat.conf ec2authtoken auth_uri http://controller1:5000
+
+# 3. Populate the Orchestration database:
+su -s /bin/sh -c "heat-manage db_sync" heat
+
+# Finalize installation
+# Start the Orchestration services and configure them to start when the system boots:
+systemctl enable openstack-heat-api.service \
+  openstack-heat-api-cfn.service openstack-heat-engine.service
+systemctl restart openstack-heat-api.service \
+  openstack-heat-api-cfn.service openstack-heat-engine.service
+systemctl status openstack-heat-api.service \
+  openstack-heat-api-cfn.service openstack-heat-engine.service
+
+# Verify operation
+. admin-openrc
+ openstack orchestration service list
++-------------------+-------------+--------------------+-------------------+--------+----------------------+--------+
+| Hostname          | Binary      | Engine ID          | Host              | Topic  | Updated At           | Status |
++-------------------+-------------+--------------------+-------------------+--------+----------------------+--------+
+| controller1.local | heat-engine | 65ccbd1e-d391-4f45 | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -a105-dd0f4295523c |                   |        | 000000               |        |
+| controller1.local | heat-engine | a8fdea1b-a89f-4503 | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -a9c2-3b6dd6220eac |                   |        | 000000               |        |
+| controller1.local | heat-engine | 592de611-cf4e-4cc3 | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -9233-84b49d819c97 |                   |        | 000000               |        |
+| controller1.local | heat-engine | 958de7f8-7d5c-     | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | 477a-8caa-         |                   |        | 000000               |        |
+|                   |             | cf80b393c80a       |                   |        |                      |        |
+| controller1.local | heat-engine | fc83b2df-494b-4ba3 | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -9008-8a0f38f0b809 |                   |        | 000000               |        |
+| controller1.local | heat-engine | f7298d74-6b75-4348 | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -ba82-1eff13ff3eca |                   |        | 000000               |        |
+| controller1.local | heat-engine | e7254e23-d268-41f2 | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -b1f7-1b9fb8f7da4a |                   |        | 000000               |        |
+| controller1.local | heat-engine | 53fd5263-8c74-4182 | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -8b1e-258164bb4632 |                   |        | 000000               |        |
+| controller1.local | heat-engine | 491fe700-4116-48e4 | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -9630-cc5c87433fbf |                   |        | 000000               |        |
+| controller1.local | heat-engine | 3097a637-27f9-4e47 | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -bcf9-ee38de8ce7fe |                   |        | 000000               |        |
+| controller1.local | heat-engine | a455ead5-4375      | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -44ae-             |                   |        | 000000               |        |
+|                   |             | aad8-5a8d14f50729  |                   |        |                      |        |
+| controller1.local | heat-engine | 84aa39c9-e866-4e0b | controller1.local | engine | 2017-08-10T06:21:11. | up     |
+|                   |             | -a251-d50491889348 |                   |        | 000000               |        |
++-------------------+-------------+--------------------+-------------------+--------+----------------------+--------+
+
+# Launch an instance
+# 1. Create a template
+cat <<'EOF' > demo-template.yml
+heat_template_version: 2015-10-15
+description: Launch a basic instance with CirrOS image using the
+             ``m1.tiny`` flavor, ``mykey`` key,  and one network.
+
+parameters:
+  NetID:
+    type: string
+    description: Network ID to use for the instance.
+
+resources:
+  server:
+    type: OS::Nova::Server
+    properties:
+      image: cirros-0.3.4-x86_64
+      flavor: m1.tiny
+      key_name: mykey
+      networks:
+      - network: { get_param: NetID }
+
+outputs:
+  instance_name:
+    description: Name of the instance.
+    value: { get_attr: [ server, name ] }
+  instance_ip:
+    description: IP address of the instance.
+    value: { get_attr: [ server, first_address ] }
+EOF
+
+# 2. Create a stack
+. demo-openrc
+ openstack network list
++--------------------------------------+-----------+------------------------------------------------------------------+
+| ID                                   | Name      | Subnets                                                          |
++--------------------------------------+-----------+------------------------------------------------------------------+
+| 2a3770fa-41f4-44aa-a716-3e3fa1d6472b | provider1 | 1ba2efe9-33e8-4577-8160-d0bf447ddb71                             |
+| 766b8550-ff25-4987-bdae-f3b0a0affea3 | private1  | d6cfa42d-a856-4013-934f-4db63432ba3b                             |
+| cfd68389-89d5-4847-a587-148ac2bb0a9d | private2  | 15dd9c63-6e98-4e05-8db8-d7fa265b9a91, 42ca9efd-                  |
+|                                      |           | 2dcf-4356-b491-1ca96f479e8b                                      |
++--------------------------------------+-----------+------------------------------------------------------------------+
+
+# Generate and add a key pair
+ssh-keygen -q -N ""
+openstack keypair create --public-key ~/.ssh/id_rsa.pub mykey
++-------------+-------------------------------------------------+
+| Field       | Value                                           |
++-------------+-------------------------------------------------+
+| fingerprint | 98:25:eb:7c:16:a3:c5:b9:5c:ec:48:1b:df:c0:e0:7e |
+| name        | mykey                                           |
+| user_id     | fbe5750c946445ceaaa0c74f0125c74a                |
++-------------+-------------------------------------------------+
+openstack keypair list
++-------+-------------------------------------------------+
+| Name  | Fingerprint                                     |
++-------+-------------------------------------------------+
+| mykey | 98:25:eb:7c:16:a3:c5:b9:5c:ec:48:1b:df:c0:e0:7e |
++-------+-------------------------------------------------+
+
+# Create a stack of one CirrOS instance on the provider network
+export NET_ID=$(openstack network list | awk '/ provider1 / { print $2 }')
+echo $NET_ID
+openstack stack create -t demo-template.yml --parameter "NetID=$NET_ID" stack
++---------------------+-----------------------------------------------------------------------------------------------+
+| Field               | Value                                                                                         |
++---------------------+-----------------------------------------------------------------------------------------------+
+| id                  | b63a2144-c118-41dc-a466-58fe2322222e                                                          |
+| stack_name          | stack                                                                                         |
+| description         | Launch a basic instance with CirrOS image using the ``m1.tiny`` flavor, ``mykey`` key,  and   |
+|                     | one network.                                                                                  |
+| creation_time       | 2017-08-10T06:42:38Z                                                                          |
+| updated_time        | None                                                                                          |
+| stack_status        | CREATE_IN_PROGRESS                                                                            |
+| stack_status_reason | Stack CREATE started                                                                          |
++---------------------+-----------------------------------------------------------------------------------------------+
+openstack stack list
++--------------------------------------+------------+-----------------+----------------------+--------------+
+| ID                                   | Stack Name | Stack Status    | Creation Time        | Updated Time |
++--------------------------------------+------------+-----------------+----------------------+--------------+
+| b63a2144-c118-41dc-a466-58fe2322222e | stack      | CREATE_COMPLETE | 2017-08-10T06:42:38Z | None         |
++--------------------------------------+------------+-----------------+----------------------+--------------+
+ openstack stack output show --all stack
++---------------+-------------------------------------------------+
+| Field         | Value                                           |
++---------------+-------------------------------------------------+
+| instance_name | {                                               |
+|               |   "output_value": "stack-server-oyq65e47c6ql",  |
+|               |   "output_key": "instance_name",                |
+|               |   "description": "Name of the instance."        |
+|               | }                                               |
+| instance_ip   | {                                               |
+|               |   "output_value": "192.161.17.69",              |
+|               |   "output_key": "instance_ip",                  |
+|               |   "description": "IP address of the instance."  |
+|               | }                                               |
++---------------+-------------------------------------------------+
+openstack server list | grep stack
+| 9a4f72bd-b518-45b8-a54d-62c37ce748af | stack-server-oyq65e47c6ql | ACTIVE | provider1=192.161.17.69             | cirros-0.3.4-x86_64 |
+# ssh login vm server
+ssh cirros@192.161.17.69
+# Delete the stack.
+openstack stack delete --yes stack
+
+####################################################################################################
+#
+#       安装配置barbican(存在问题：1、python-gunicorn包找不到；2、安装完成后，测试发现api调用不成功)
+#
+####################################################################################################
+# Prerequisites
+# 1. To create the database
+mysql -uroot -p123456 <<'EOF'
+CREATE DATABASE barbican;
+GRANT ALL PRIVILEGES ON barbican.* TO 'barbican'@'localhost' \
+  IDENTIFIED BY '123456';
+GRANT ALL PRIVILEGES ON barbican.* TO 'barbican'@'%' \
+  IDENTIFIED BY '123456';
+EOF
+# test
+mysql -Dbarbican -ubarbican -p123456 <<'EOF'
+quit
+EOF
+
+# 2. Source the admin credentials to gain access to admin-only CLI commands:
+source admin-openrc
+
+# 3. To create the service credentials, complete these steps:
+openstack user create --domain default barbican --password 123456
+openstack role add --project service --user barbican admin
+openstack role create creator
+openstack role add --project service --user barbican creator
+openstack service create --name barbican --description "Key Manager" key-manager
+
+# 4. Create the Key Manager service API endpoints:
+openstack endpoint create --region RegionOne \
+  key-manager public http://controller1:9311
+openstack endpoint create --region RegionOne \
+  key-manager internal http://controller1:9311
+openstack endpoint create --region RegionOne \
+  key-manager admin http://controller1:9311
+
+# Install and configure components
+# 1. Install the packages:
+rpm -ivh ftp://ftp.pbone.net/mirror/download.fedora.redhat.com/pub/fedora/linux/releases/25/Everything/armhfp/os/Packages/p/python-gunicorn-19.4.1-3.fc25.noarch.rpm
+yum install -y openstack-barbican-api
+
+# 2. Edit the /etc/barbican/barbican.conf file and complete the following actions:
+openstack-config --set /etc/barbican/barbican.conf DEFAULT sql_connection mysql+pymysql://barbican:123456@controller1/barbican
+openstack-config --set /etc/barbican/barbican.conf DEFAULT transport_url rabbit://openstack:123456@controller1 
+openstack-config --set /etc/barbican/barbican.conf keystone_authtoken auth_uri http://controller1:5000 
+openstack-config --set /etc/barbican/barbican.conf keystone_authtoken auth_url http://controller1:35357 
+openstack-config --set /etc/barbican/barbican.conf keystone_authtoken memcached_servers controller1:11211 
+openstack-config --set /etc/barbican/barbican.conf keystone_authtoken auth_type password 
+openstack-config --set /etc/barbican/barbican.conf keystone_authtoken project_domain_name default 
+openstack-config --set /etc/barbican/barbican.conf keystone_authtoken user_domain_name default 
+openstack-config --set /etc/barbican/barbican.conf keystone_authtoken project_name service
+openstack-config --set /etc/barbican/barbican.conf keystone_authtoken username barbican 
+openstack-config --set /etc/barbican/barbican.conf keystone_authtoken password 123456
+
+# 3. Edit the /etc/barbican/barbican-api-paste.ini file and complete the following actions:
+openstack-config --set /etc/barbican/barbican-api-paste.ini pipeline:barbican_api pipeline "cors authtoken context apiapp"
+
+# 4. Populate the Key Manager service database:
+#(To prevent The Key Manager service database will be automatically populated when the service is first started)
+openstack-config --set /etc/barbican/barbican.conf DEFAULT db_auto_create false
+# Then populate the database as below:
+su -s /bin/sh -c "barbican-manage db upgrade" barbican
+
+# 5. Barbican has a plugin architecture which allows the deployer to store secrets in a number of different back-end secret stores. By default, Barbican is configured to store secrets in a basic file-based keystore. This key store is NOT safe for production use.
+# For a list of supported plugins and detailed instructions on how to configure them, see Secret Store Back-ends
+
+
+# Finalize installation
+# 1. Create the /etc/httpd/conf.d/wsgi-barbican.conf file with the following content:
+cat <<'EOF' > /etc/httpd/conf.d/wsgi-barbican.conf
+Listen 9311
+<VirtualHost [::1]:9311>
+    ServerName controller1
+    
+    ## Logging
+    ErrorLog "/var/log/httpd/barbican_wsgi_main_error_ssl.log"
+    LogLevel debug
+    ServerSignature Off
+    CustomLog "/var/log/httpd/barbican_wsgi_main_access_ssl.log" combined
+
+    WSGIApplicationGroup %{GLOBAL}
+    WSGIDaemonProcess barbican-api display-name=barbican-api group=barbican processes=2 threads=8 user=barbican
+    WSGIProcessGroup barbican-api
+    WSGIScriptAlias / "/usr/lib/python2.7/site-packages/barbican/api/app.wsgi"
+    WSGIPassAuthorization On
+    LimitRequestBody 114688
+    
+    <Directory /usr/bin>
+        <IfVersion >= 2.4>
+            Require all granted
+        </IfVersion>
+        <IfVersion < 2.4>
+            Order allow,deny
+            Allow from all
+        </IfVersion>
+    </Directory>
+</VirtualHost>
+EOF
+
+# 2. Start the Apache HTTP service and configure it to start when the system boots:
+systemctl enable httpd.service
+systemctl restart httpd.service
+systemctl status httpd.service
+
+# Verify operation
+# 1. Source the admin credentials to be able to perform Barbican API calls:
+. admin-openrc
+
+# 2. Use the OpenStack CLI to store a secret:
+openstack secret store --name mysecret --payload j4=]d21
+
+# 3. Confirm that the secret was stored by retrieving it:
+openstack secret get http://10.0.2.15:9311/v1/secrets/655d7d30-c11a-49d9-a0f1-34cdf53a36fa
+
+# 4. Confirm that the secret payload was stored by retrieving it:
+openstack secret get http://10.0.2.15:9311/v1/secrets/655d7d30-c11a-49d9-a0f1-34cdf53a36fa --payload
+
+####################################################################################################
+#
+#       安装配置magnum
+# 依赖已安装组件: Identity service, Image service, Compute service, Networking service, 
+# Block Storage service and Orchestration service. 
+#
+####################################################################################################
+
+
+
+
+
+
+####################################################################################################
+#
 #       安装配置
 #
 ####################################################################################################
