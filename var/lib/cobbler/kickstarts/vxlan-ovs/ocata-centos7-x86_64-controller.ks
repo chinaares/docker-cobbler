@@ -1967,6 +1967,7 @@ yum install -y openstack-barbican-api
 # 2. Edit the /etc/barbican/barbican.conf file and complete the following actions:
 openstack-config --set /etc/barbican/barbican.conf DEFAULT sql_connection mysql+pymysql://barbican:123456@controller1/barbican
 openstack-config --set /etc/barbican/barbican.conf DEFAULT transport_url rabbit://openstack:123456@controller1 
+openstack-config --set /etc/barbican/barbican.conf DEFAULT host_href http://controller1:9311
 openstack-config --set /etc/barbican/barbican.conf keystone_authtoken auth_uri http://controller1:5000 
 openstack-config --set /etc/barbican/barbican.conf keystone_authtoken auth_url http://controller1:35357 
 openstack-config --set /etc/barbican/barbican.conf keystone_authtoken memcached_servers controller1:11211 
@@ -2086,9 +2087,166 @@ openstack secret get http://10.0.2.15:9311/v1/secrets/655d7d30-c11a-49d9-a0f1-34
 # Block Storage service and Orchestration service. 
 #
 ####################################################################################################
+# Prerequisites
+# 1. create database
+mysql -uroot -p123456 <<'EOF'
+CREATE DATABASE magnum;
+EOF
+# Grant proper access to the magnum database:
+mysql -uroot -p123456 <<'EOF'
+GRANT ALL PRIVILEGES ON magnum.* TO 'magnum'@'localhost' \
+  IDENTIFIED BY '123456';
+GRANT ALL PRIVILEGES ON magnum.* TO 'magnum'@'%' \
+  IDENTIFIED BY '123456';
+EOF
+# verify
+mysql -Dmagnum -umagnum -p123456 <<'EOF'
+quit
+EOF
+
+
+# 2. Source the admin credentials to gain access to admin-only CLI commands:
+source /root/admin-openrc
+
+# 3. To create the service credentials
+openstack user create --domain default magnum --password 123456
+openstack role add --project service --user magnum admin
+openstack service create --name magnum \
+  --description "OpenStack Container Infrastructure Management Service" \
+  container-infra
+
+# 4. Create the Container Infrastructure Management service API endpoints:
+openstack endpoint create --region RegionOne \
+  container-infra public http://controller1:9511/v1
+openstack endpoint create --region RegionOne \
+  container-infra internal http://controller1:9511/v1
+openstack endpoint create --region RegionOne \
+  container-infra admin http://controller1:9511/v1
+
+# 5. Magnum requires additional information in the Identity service to manage COE clusters. To add this information, complete these steps:
+openstack domain create --description "Owns users and projects \
+  created by magnum" magnum
+openstack user create --domain magnum magnum_domain_admin --password 123456
+openstack role add --domain magnum --user-domain magnum --user \
+  magnum_domain_admin admin
+
+# Install and configure components¶
+# 1. Install the packages:
+yum install -y openstack-magnum-api openstack-magnum-conductor python-magnumclient
+
+# 2. Edit the /etc/magnum/magnum.conf file:
+NIC=eth0
+IP=`LANG=C ip addr show dev $NIC | grep 'inet '| grep $NIC$  |  awk '/inet /{ print $2 }' | awk -F '/' '{ print $1 }'`
+openstack-config --set /etc/magnum/magnum.conf DEFAULT transport_url rabbit://openstack:123456@controller1
+openstack-config --set /etc/magnum/magnum.conf api host 0.0.0.0
+openstack-config --set /etc/magnum/magnum.conf database connection mysql+pymysql://magnum:123456@controller1/magnum
+# select barbican (or x509keypair if you don’t have barbican installed)
+openstack-config --set /etc/magnum/magnum.conf certificates cert_manager_type x509keypair
+openstack-config --set /etc/magnum/magnum.conf cinder_client region_name RegionOne
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken auth_uri http://controller1:5000/v3
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken auth_version v3
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken auth_url http://controller1:35357
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken memcached_servers controller1:11211
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken auth_type password
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken project_domain_id default
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken user_domain_id default
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken project_name service
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken username magnum
+openstack-config --set /etc/magnum/magnum.conf keystone_authtoken password 123456
+openstack-config --set /etc/magnum/magnum.conf trust trustee_domain_name magnum
+openstack-config --set /etc/magnum/magnum.conf trust trustee_domain_admin_name magnum_domain_admin
+openstack-config --set /etc/magnum/magnum.conf trust trustee_domain_admin_password 123456
+openstack-config --set /etc/magnum/magnum.conf trust trustee_keystone_interface internal
+openstack-config --set /etc/magnum/magnum.conf oslo_messaging_notifications driver messaging
+openstack-config --set /etc/magnum/magnum.conf oslo_concurrency lock_path /var/lib/magnum/tmp
+
+# 3. Populate Magnum database:
+su -s /bin/sh -c "magnum-db-manage upgrade" magnum
+
+# Finalize installation
+systemctl enable openstack-magnum-api.service \
+  openstack-magnum-conductor.service
+systemctl restart openstack-magnum-api.service \
+  openstack-magnum-conductor.service
+systemctl status openstack-magnum-api.service \
+  openstack-magnum-conductor.service
+
+# Verify operation
+# 1. Source the admin tenant credentials:
+source admin-openrc
+
+# 2. To list out the health of the internal services, namely conductor, of magnum, use:
+magnum service-list
+
+# Launch an instance
+# Create an external network (Optional)
+# 1. Create an external network with an appropriate provider based on your cloud provider support for your case:
+openstack network create public --provider-network-type vxlan \
+      --external \
+      --project service
+
+openstack subnet create public-subnet --network public \
+      --subnet-range 192.161.14.0/24 \
+      --gateway 192.161.14.1 \
+      --ip-version 4
+
+# Provision a cluster and create a container
+# 1. Download the ocata Fedora Atomic image built by magnum team, which is required to provision the cluster:
+wget https://fedorapeople.org/groups/magnum/fedora-atomic-ocata.qcow2
+
+# 2. Source the demo credentials to perform the following steps as a non-administrative project:
+source demo-openrc
+
+# 3. Register the image to the Image service setting the os_distro property to fedora-atomic:
+openstack image create \
+      --disk-format=qcow2 \
+      --container-format=bare \
+      --file=fedora-atomic-ocata.qcow2 \
+      --property os_distro='fedora-atomic' \
+      fedora-atomic-ocata
+openstack image create \
+      --disk-format=qcow2 \
+      --container-format=bare \
+      --file=ubuntu-mesos-ocata.qcow2 \
+      --property os_distro='ubuntu-mesos' \
+      ubuntu-mesos-ocata
 
 
 
+# 4. Create a keypair on the Compute service:
+openstack keypair create --public-key ~/.ssh/id_rsa.pub mykey
+
+# 5. Create a cluster template for a Docker Swarm cluster using the above image, m1.small as flavor for the master and the node, mykey as keypair, public as external network and 8.8.8.8 for DNS nameserver, with the following command:
+magnum cluster-template-create --name swarm-cluster-template \
+     --image fedora-atomic-ocata \
+     --keypair mykey \
+     --external-network provider1 \
+     --dns-nameserver 192.168.1.12 \
+     --master-flavor m1.small \
+     --flavor m1.small \
+     --coe swarm
+
+# 6. Create a cluster with one node and one master with the following command:
+magnum cluster-create --name swarm-cluster \
+    --cluster-template swarm-cluster-template \
+    --master-count 1 \
+    --node-count 1
+
+# cluster-create failed when cert_manager_type = barbican:
+
+# check the status of you cluster using the commands: 
+magnum cluster-list 
+magnum cluster-show swarm-cluster
+
+# 7. Add the credentials of the above cluster to your environment:
+mkdir myclusterconfig
+$(magnum cluster-config swarm-cluster --dir myclusterconfig)
+
+# 8. Create a container:
+docker run busybox echo "Hello from Docker!"
+
+# 9. Delete the cluster:
+magnum cluster-delete swarm-cluster
 
 
 
