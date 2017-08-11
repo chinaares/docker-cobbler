@@ -1961,8 +1961,7 @@ openstack endpoint create --region RegionOne \
   key-manager admin http://controller1:9311
 
 # Install and configure components
-# 1. Install the packages:
-rpm -ivh ftp://ftp.pbone.net/mirror/download.fedora.redhat.com/pub/fedora/linux/releases/25/Everything/armhfp/os/Packages/p/python-gunicorn-19.4.1-3.fc25.noarch.rpm
+# 1. Install the packages:（need use internet yum repo）
 yum install -y openstack-barbican-api
 
 # 2. Edit the /etc/barbican/barbican.conf file and complete the following actions:
@@ -2010,7 +2009,13 @@ Listen 9311
     WSGIScriptAlias / "/usr/lib/python2.7/site-packages/barbican/api/app.wsgi"
     WSGIPassAuthorization On
     LimitRequestBody 114688
-    
+
+    <Directory /usr/lib/python2.7/site-packages/barbican/api>
+      Options All
+      AllowOverride All
+      Require all granted
+    </Directory>
+
     <Directory /usr/bin>
         <IfVersion >= 2.4>
             Require all granted
@@ -2034,12 +2039,45 @@ systemctl status httpd.service
 
 # 2. Use the OpenStack CLI to store a secret:
 openstack secret store --name mysecret --payload j4=]d21
++---------------+-----------------------------------------------------------------------+
+| Field         | Value                                                                 |
++---------------+-----------------------------------------------------------------------+
+| Secret href   | http://localhost:9311/v1/secrets/0f2a4145-adcd-4fd5-addb-d9a644a99e1b |
+| Name          | mysecret                                                              |
+| Created       | None                                                                  |
+| Status        | None                                                                  |
+| Content types | None                                                                  |
+| Algorithm     | aes                                                                   |
+| Bit length    | 256                                                                   |
+| Secret type   | opaque                                                                |
+| Mode          | cbc                                                                   |
+| Expiration    | None                                                                  |
++---------------+-----------------------------------------------------------------------+
 
 # 3. Confirm that the secret was stored by retrieving it:
 openstack secret get http://10.0.2.15:9311/v1/secrets/655d7d30-c11a-49d9-a0f1-34cdf53a36fa
++---------------+-----------------------------------------------------------------------+
+| Field         | Value                                                                 |
++---------------+-----------------------------------------------------------------------+
+| Secret href   | http://localhost:9311/v1/secrets/0f2a4145-adcd-4fd5-addb-d9a644a99e1b |
+| Name          | mysecret                                                              |
+| Created       | 2017-08-11 03:03:06+00:00                                             |
+| Status        | ACTIVE                                                                |
+| Content types | {u'default': u'text/plain'}                                           |
+| Algorithm     | aes                                                                   |
+| Bit length    | 256                                                                   |
+| Secret type   | opaque                                                                |
+| Mode          | cbc                                                                   |
+| Expiration    | None                                                                  |
++---------------+-----------------------------------------------------------------------+
 
 # 4. Confirm that the secret payload was stored by retrieving it:
 openstack secret get http://10.0.2.15:9311/v1/secrets/655d7d30-c11a-49d9-a0f1-34cdf53a36fa --payload
++---------+---------+
+| Field   | Value   |
++---------+---------+
+| Payload | j4=]d21 |
++---------+---------+
 
 ####################################################################################################
 #
