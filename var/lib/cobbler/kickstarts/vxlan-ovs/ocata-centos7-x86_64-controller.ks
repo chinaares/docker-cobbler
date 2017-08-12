@@ -2221,10 +2221,18 @@ magnum cluster-template-create --name swarm-cluster-template \
      --image fedora-atomic-ocata \
      --keypair mykey \
      --external-network provider1 \
+	 --fixed-network private1 \
+	 --fixed-subnet private1-v4-1 \
      --dns-nameserver 192.168.1.12 \
      --master-flavor m1.small \
      --flavor m1.small \
      --coe swarm
+(
+magnum cluster-template-list
+magnum cluster-template-delete  swarm-cluster-template
+
+
+)
 
 # 6. Create a cluster with one node and one master with the following command:
 magnum cluster-create --name swarm-cluster \
