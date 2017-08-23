@@ -1995,7 +1995,7 @@ su -s /bin/sh -c "barbican-manage db upgrade" barbican
 # 1. Create the /etc/httpd/conf.d/wsgi-barbican.conf file with the following content:
 cat <<'EOF' > /etc/httpd/conf.d/wsgi-barbican.conf
 Listen 9311
-<VirtualHost [::1]:9311>
+<VirtualHost *:9311>
     ServerName controller1
     
     ## Logging
@@ -2012,9 +2012,9 @@ Listen 9311
     LimitRequestBody 114688
 
     <Directory /usr/lib/python2.7/site-packages/barbican/api>
-      Options All
-      AllowOverride All
-      Require all granted
+        Options All
+        AllowOverride All
+        Require all granted
     </Directory>
 
     <Directory /usr/bin>
@@ -2037,48 +2037,52 @@ systemctl status httpd.service
 # Verify operation
 # 1. Source the admin credentials to be able to perform Barbican API calls:
 . admin-openrc
+openstack secret list
 
 # 2. Use the OpenStack CLI to store a secret:
 openstack secret store --name mysecret --payload j4=]d21
-+---------------+-----------------------------------------------------------------------+
-| Field         | Value                                                                 |
-+---------------+-----------------------------------------------------------------------+
-| Secret href   | http://localhost:9311/v1/secrets/0f2a4145-adcd-4fd5-addb-d9a644a99e1b |
-| Name          | mysecret                                                              |
-| Created       | None                                                                  |
-| Status        | None                                                                  |
-| Content types | None                                                                  |
-| Algorithm     | aes                                                                   |
-| Bit length    | 256                                                                   |
-| Secret type   | opaque                                                                |
-| Mode          | cbc                                                                   |
-| Expiration    | None                                                                  |
-+---------------+-----------------------------------------------------------------------+
++---------------+-------------------------------------------------------------------------+
+| Field         | Value                                                                   |
++---------------+-------------------------------------------------------------------------+
+| Secret href   | http://controller1:9311/v1/secrets/8f8cb437-fdd8-4bba-a3fd-ea3495cd655d |
+| Name          | mysecret                                                                |
+| Created       | None                                                                    |
+| Status        | None                                                                    |
+| Content types | None                                                                    |
+| Algorithm     | aes                                                                     |
+| Bit length    | 256                                                                     |
+| Secret type   | opaque                                                                  |
+| Mode          | cbc                                                                     |
+| Expiration    | None                                                                    |
++---------------+-------------------------------------------------------------------------+
 
 # 3. Confirm that the secret was stored by retrieving it:
-openstack secret get http://10.0.2.15:9311/v1/secrets/655d7d30-c11a-49d9-a0f1-34cdf53a36fa
-+---------------+-----------------------------------------------------------------------+
-| Field         | Value                                                                 |
-+---------------+-----------------------------------------------------------------------+
-| Secret href   | http://localhost:9311/v1/secrets/0f2a4145-adcd-4fd5-addb-d9a644a99e1b |
-| Name          | mysecret                                                              |
-| Created       | 2017-08-11 03:03:06+00:00                                             |
-| Status        | ACTIVE                                                                |
-| Content types | {u'default': u'text/plain'}                                           |
-| Algorithm     | aes                                                                   |
-| Bit length    | 256                                                                   |
-| Secret type   | opaque                                                                |
-| Mode          | cbc                                                                   |
-| Expiration    | None                                                                  |
-+---------------+-----------------------------------------------------------------------+
+openstack secret get http://controller1:9311/v1/secrets/8f8cb437-fdd8-4bba-a3fd-ea3495cd655d
++---------------+-------------------------------------------------------------------------+
+| Field         | Value                                                                   |
++---------------+-------------------------------------------------------------------------+
+| Secret href   | http://controller1:9311/v1/secrets/8f8cb437-fdd8-4bba-a3fd-ea3495cd655d |
+| Name          | mysecret                                                                |
+| Created       | 2017-08-15T08:05:59+00:00                                               |
+| Status        | ACTIVE                                                                  |
+| Content types | {u'default': u'text/plain'}                                             |
+| Algorithm     | aes                                                                     |
+| Bit length    | 256                                                                     |
+| Secret type   | opaque                                                                  |
+| Mode          | cbc                                                                     |
+| Expiration    | None                                                                    |
++---------------+-------------------------------------------------------------------------+
 
 # 4. Confirm that the secret payload was stored by retrieving it:
-openstack secret get http://10.0.2.15:9311/v1/secrets/655d7d30-c11a-49d9-a0f1-34cdf53a36fa --payload
+openstack secret get http://controller1:9311/v1/secrets/8f8cb437-fdd8-4bba-a3fd-ea3495cd655d --payload
 +---------+---------+
 | Field   | Value   |
 +---------+---------+
 | Payload | j4=]d21 |
 +---------+---------+
+
+# 5. delete a secret
+openstack secret mysecret http://controller1:9311/v1/secrets/8f8cb437-fdd8-4bba-a3fd-ea3495cd655d
 
 ####################################################################################################
 #
@@ -2141,7 +2145,7 @@ openstack-config --set /etc/magnum/magnum.conf DEFAULT transport_url rabbit://op
 openstack-config --set /etc/magnum/magnum.conf api host 0.0.0.0
 openstack-config --set /etc/magnum/magnum.conf database connection mysql+pymysql://magnum:123456@controller1/magnum
 # select barbican (or x509keypair if you don’t have barbican installed)
-openstack-config --set /etc/magnum/magnum.conf certificates cert_manager_type x509keypair
+openstack-config --set /etc/magnum/magnum.conf certificates cert_manager_type barbican
 openstack-config --set /etc/magnum/magnum.conf cinder_client region_name RegionOne
 openstack-config --set /etc/magnum/magnum.conf keystone_authtoken auth_uri http://controller1:5000/v3
 openstack-config --set /etc/magnum/magnum.conf keystone_authtoken auth_version v3
@@ -2156,7 +2160,9 @@ openstack-config --set /etc/magnum/magnum.conf keystone_authtoken password 12345
 openstack-config --set /etc/magnum/magnum.conf trust trustee_domain_name magnum
 openstack-config --set /etc/magnum/magnum.conf trust trustee_domain_admin_name magnum_domain_admin
 openstack-config --set /etc/magnum/magnum.conf trust trustee_domain_admin_password 123456
-openstack-config --set /etc/magnum/magnum.conf trust trustee_keystone_interface internal
+openstack-config --set /etc/magnum/magnum.conf trust trustee_keystone_interface public
+openstack-config --set /etc/magnum/magnum.conf trust trustee_domain_id $(openstack domain show magnum | awk '/ id /{print $4}')
+openstack-config --set /etc/magnum/magnum.conf trust trustee_domain_admin_id $(openstack user show magnum_domain_admin | awk '/ id /{print $4}')
 openstack-config --set /etc/magnum/magnum.conf oslo_messaging_notifications driver messaging
 openstack-config --set /etc/magnum/magnum.conf oslo_concurrency lock_path /var/lib/magnum/tmp
 
@@ -2171,12 +2177,98 @@ systemctl restart openstack-magnum-api.service \
 systemctl status openstack-magnum-api.service \
   openstack-magnum-conductor.service
 
+# fixed bug 1: 无法解析主机名字controller1的问题。
+# cause: 配置中多处url使用controller1作为服务地址，该配置在公共dns中无法解释。
+# solution1：搭建云服务dns，将controller1 192.161.17.51公共地址作为A记录配置好，容器集群模板将dns server指向该dns服务；
+# solution2：修改各个容器节点的/etc/hosts, 添加名字解析条目：
+1) 添加文件/usr/lib/python2.7/site-packages/magnum/drivers/common/templates/swarm/fragments/add-host.sh，内容如下：
+vi /usr/lib/python2.7/site-packages/magnum/drivers/common/templates/swarm/fragments/add-host.sh
+#!/bin/sh
+
+cat <<'EOF' >> /etc/hosts
+192.161.17.51 controller1 controller1.local
+192.161.17.55 compute1 compute1.local
+192.161.17.56 compute2 compute2.local
+10.0.0.59 network1 network1.local
+10.0.0.60 cinder1 cinder1.local
+10.0.0.61 nfs1 nfs1.local
+10.0.0.62 object1 object1.local
+10.0.0.63 object2 object2.local
+EOF
+
+2)修改模板文件
+vi /usr/lib/python2.7/site-packages/magnum/drivers/swarm_fedora_atomic_v1/templates/swarmmaster.yaml
+在239行插入5行内容
+  add_host:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: ../../common/templates/swarm/fragments/add-host.sh}
+在372行插入一行内容
+  swarm_master_init:
+    type: "OS::Heat::MultipartMime"
+    properties:
+      parts:
+        - config: {get_resource: add_host}
+
+vi /usr/lib/python2.7/site-packages/magnum/drivers/swarm_fedora_atomic_v1/templates/swarmnode.yaml
+在221行插入5行内容
+  add_host:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: ../../common/templates/swarm/fragments/add-host.sh}
+在335行插入一行内容
+  swarm_master_init:
+    type: "OS::Heat::MultipartMime"
+    properties:
+      parts:
+        - config: {get_resource: add_host}
+
+# fixed bug 2: magnum-api: RemoteError: Remote error: BadRequest Invalid input for field 'identity/password/user/password': None is not of type 'string' (HTTP 400) 
+# This commit changes how the Nova client is configured to use the
+# token_endpoint authentication plugin combined with endpoint_override,
+# which allows to communicate with the Nova endpoint without extra
+# requests to Keystone. This is necessary between trust-scoped tokens
+# cannot re-authenticate with Keystone, which happens with other
+# authentication plugins.
+# 虚拟机节点初始化报错：KeyError: 'pem'
+# 问题状态：该问题未解决，创建集群成功后，节点内的docker服务等启动不起来。
+测试程序：
+#!/usr/bin/python
+
+from keystoneauth1.identity import v3 as ka_v3
+from keystoneauth1 import session as ka_session
+from keystoneclient.v3 import client as kc_v3
+
+auth = ka_v3.Password(
+    auth_url='http://controller1:5000/v3',
+    user_id='4f40e113ab8f4ba38a39e405757999d4',
+    domain_id='02989454dec145ac8ad6a0d06f06b16d',
+    password='123456')
+
+session = ka_session.Session(auth=auth)
+domain_admin_client = kc_v3.Client(session=session)
+user = domain_admin_client.users.create(
+    name='ares',
+    password='123456')
+
+domain_admin_client.users.delete(user)
+
+
+
+
 # Verify operation
 # 1. Source the admin tenant credentials:
 source admin-openrc
 
 # 2. To list out the health of the internal services, namely conductor, of magnum, use:
 magnum service-list
++----+------+------------------+-------+----------+-----------------+---------------------------+---------------------------+
+| id | host | binary           | state | disabled | disabled_reason | created_at                | updated_at                |
++----+------+------------------+-------+----------+-----------------+---------------------------+---------------------------+
+| 1  | -    | magnum-conductor | up    |          | -               | 2017-08-15T08:18:45+00:00 | 2017-08-15T08:29:58+00:00 |
++----+------+------------------+-------+----------+-----------------+---------------------------+---------------------------+
 
 # Launch an instance
 # Create an external network (Optional)
@@ -2211,31 +2303,35 @@ openstack image create \
       --property os_distro='ubuntu-mesos' \
       ubuntu-mesos-ocata
 
-
-
 # 4. Create a keypair on the Compute service:
+openstack keypair list
+openstack keypair delete mykey
 openstack keypair create --public-key ~/.ssh/id_rsa.pub mykey
 
-# 5. Create a cluster template for a Docker Swarm cluster using the above image, m1.small as flavor for the master and the node, mykey as keypair, public as external network and 8.8.8.8 for DNS nameserver, with the following command:
+# 5. Create a cluster template for a Docker Swarm cluster using the above image, m1.small as flavor for the master and the node, mykey as keypair, public as external network and 192.168.1.12 for DNS nameserver, with the following command:
 magnum cluster-template-create --name swarm-cluster-template \
      --image fedora-atomic-ocata \
      --keypair mykey \
      --external-network provider1 \
-	 --fixed-network private1 \
-	 --fixed-subnet private1-v4-1 \
+     --fixed-network private1 \
+     --fixed-subnet private1-v4-1 \
      --dns-nameserver 192.168.1.12 \
      --master-flavor m1.small \
      --flavor m1.small \
      --coe swarm
-(
-magnum cluster-template-list
-magnum cluster-template-delete  swarm-cluster-template
 
+# magnum cluster-template-list
+# magnum cluster-template-delete  swarm-cluster-template
 
-)
 
 # 6. Create a cluster with one node and one master with the following command:
 magnum cluster-create --name swarm-cluster \
+    --cluster-template swarm-cluster-template \
+    --master-count 1 \
+    --node-count 1 \
+    --timeout 120
+
+magnum cluster-create --name swarm-cluster1 \
     --cluster-template swarm-cluster-template \
     --master-count 1 \
     --node-count 1
@@ -2245,17 +2341,184 @@ magnum cluster-create --name swarm-cluster \
 # check the status of you cluster using the commands: 
 magnum cluster-list 
 magnum cluster-show swarm-cluster
+magnum cluster-show swarm-cluster1
 
 # 7. Add the credentials of the above cluster to your environment:
+# 如果没安装，需要先安装客户端：
+pip install --upgrade python-magnumclient
+# 执行命令
 mkdir myclusterconfig
-$(magnum cluster-config swarm-cluster --dir myclusterconfig)
+$(magnum cluster-config swarm-cluster1 --dir myclusterconfig)
 
 # 8. Create a container:
 docker run busybox echo "Hello from Docker!"
 
 # 9. Delete the cluster:
+# magnum cluster-list 
 magnum cluster-delete swarm-cluster
+# magnum cluster-template-list
+magnum cluster-template-delete swarm-cluster-template
 
+####################################################################################################
+#
+#       安装配置trove
+#
+####################################################################################################
+# Prerequisites
+# 1. create database
+mysql -uroot -p123456 <<'EOF'
+CREATE DATABASE trove;
+EOF
+# Grant proper access to the trove database:
+mysql -uroot -p123456 <<'EOF'
+GRANT ALL PRIVILEGES ON trove.* TO 'trove'@'localhost' \
+  IDENTIFIED BY '123456';
+GRANT ALL PRIVILEGES ON trove.* TO 'trove'@'%' \
+  IDENTIFIED BY '123456';
+EOF
+# verify
+mysql -Dtrove -utrove -p123456 <<'EOF'
+quit
+EOF
+
+
+# 2. Source the admin credentials to gain access to admin-only CLI commands:
+source /root/admin-openrc
+
+# 3. To create the service credentials
+openstack user create --domain default trove --password 123456
+openstack role add --project service --user trove admin
+openstack service create --name trove \
+  --description "Database" \
+  database
+
+# 4. Create the Container Infrastructure Management service API endpoints:
+openstack endpoint create --region RegionOne \
+  database public http://controller1:8779/v1.0/%\(tenant_id\)s
+openstack endpoint create --region RegionOne \
+  database internal http://controller1:8779/v1.0/%\(tenant_id\)s
+openstack endpoint create --region RegionOne \
+  database admin http://controller1:8779/v1.0/%\(tenant_id\)s
+
+# Install and configure components
+# 1. Install the packages:
+yum install -y openstack-trove python-troveclient
+
+# 2. In the /etc/trove directory, edit the trove.conf, trove-taskmanager.conf and trove-conductor.conf files and complete the following steps:
+# * Provide appropriate values for the following settings:
+openstack-config --set /etc/trove/trove.conf DEFAULT log_dir /var/log/trove
+openstack-config --set /etc/trove/trove.conf DEFAULT trove_auth_url http://controller1:5000/v2.0
+openstack-config --set /etc/trove/trove.conf DEFAULT nova_compute_url http://controller1:8774/v2
+openstack-config --set /etc/trove/trove.conf DEFAULT cinder_url http://controller1:8776/v1
+openstack-config --set /etc/trove/trove.conf DEFAULT swift_url http://controller1:8080/v1/AUTH_
+openstack-config --set /etc/trove/trove.conf DEFAULT notifier_queue_hostname controller1
+openstack-config --set /etc/trove/trove.conf DEFAULT transport_url rabbit://openstack:123456@controller1
+openstack-config --set /etc/trove/trove.conf database connection mysql+pymysql://trove:123456@controller1/trove
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT log_dir /var/log/trove
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT trove_auth_url http://controller1:5000/v2.0
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT nova_compute_url http://controller1:8774/v2
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT cinder_url http://controller1:8776/v1
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT swift_url http://controller1:8080/v1/AUTH_
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT notifier_queue_hostname controller1
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT transport_url rabbit://openstack:123456@controller1
+openstack-config --set /etc/trove/trove-taskmanager.conf database connection mysql+pymysql://trove:123456@controller1/trove
+openstack-config --set /etc/trove/trove-conductor.conf DEFAULT log_dir /var/log/trove
+openstack-config --set /etc/trove/trove-conductor.conf DEFAULT trove_auth_url http://controller1:5000/v2.0
+openstack-config --set /etc/trove/trove-conductor.conf DEFAULT nova_compute_url http://controller1:8774/v2
+openstack-config --set /etc/trove/trove-conductor.conf DEFAULT cinder_url http://controller1:8776/v1
+openstack-config --set /etc/trove/trove-conductor.conf DEFAULT swift_url http://controller1:8080/v1/AUTH_
+openstack-config --set /etc/trove/trove-conductor.conf DEFAULT notifier_queue_hostname controller1
+openstack-config --set /etc/trove/trove-conductor.conf DEFAULT transport_url rabbit://openstack:123456@controller1
+openstack-config --set /etc/trove/trove-conductor.conf database connection mysql+pymysql://trove:123456@controller1/trove
+
+# * Configure the Database service to use the RabbitMQ message broker by setting the following options in each file:
+openstack-config --set /etc/trove/trove.conf DEFAULT rpc_backend rabbit
+openstack-config --set /etc/trove/trove.conf oslo_messaging_rabbit rabbit_host controller1
+openstack-config --set /etc/trove/trove.conf oslo_messaging_rabbit rabbit_userid openstack
+openstack-config --set /etc/trove/trove.conf oslo_messaging_rabbit rabbit_password 123456
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT rpc_backend rabbit
+openstack-config --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit rabbit_host controller1
+openstack-config --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit rabbit_userid openstack
+openstack-config --set /etc/trove/trove-taskmanager.conf oslo_messaging_rabbit rabbit_password 123456
+openstack-config --set /etc/trove/trove-conductor.conf DEFAULT rpc_backend rabbit
+openstack-config --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit rabbit_host controller1
+openstack-config --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit rabbit_userid openstack
+openstack-config --set /etc/trove/trove-conductor.conf oslo_messaging_rabbit rabbit_password 123456
+
+# 3. Verify that the api-paste.ini file is present in /etc/trove.
+ll /etc/trove/api-paste.ini
+
+# 4. Edit the trove.conf file so it includes appropriate values for the settings shown below:
+openstack-config --set /etc/trove/trove.conf DEFAULT auth_strategy keystone
+# Config option for showing the IP address that nova doles out
+openstack-config --set /etc/trove/trove.conf DEFAULT add_addresses True
+openstack-config --set /etc/trove/trove.conf DEFAULT network_label_regex ^NETWORK_LABEL$
+#openstack-config --set /etc/trove/trove.conf DEFAULT network_label_regex ".*"
+openstack-config --set /etc/trove/trove.conf DEFAULT api_paste_config /etc/trove/api-paste.ini
+openstack-config --set /etc/trove/trove.conf keystone_authtoken auth_uri http://controller1:5000
+openstack-config --set /etc/trove/trove.conf keystone_authtoken auth_url http://controller1:35357
+openstack-config --set /etc/trove/trove.conf keystone_authtoken auth_type password
+openstack-config --set /etc/trove/trove.conf keystone_authtoken project_domain_name default
+openstack-config --set /etc/trove/trove.conf keystone_authtoken user_domain_name default
+openstack-config --set /etc/trove/trove.conf keystone_authtoken project_name service
+openstack-config --set /etc/trove/trove.conf keystone_authtoken username trove
+openstack-config --set /etc/trove/trove.conf keystone_authtoken password 123456
+
+# 5. Edit the trove-taskmanager.conf file 
+# Configuration options for talking to nova via the novaclient.
+# These options are for an admin user in your keystone config.
+# It proxy's the token received from the user to send to nova
+# via this admin users creds,
+# basically acting like the client via that proxy token.
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT nova_proxy_admin_user admin
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT nova_proxy_admin_pass 123456
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT nova_proxy_admin_tenant_name service
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT taskmanager_manager trove.taskmanager.manager.Manager
+# Inject configuration into guest via ConfigDrive
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT use_nova_server_config_drive True
+# Set these if using Neutron Networking
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT network_driver trove.network.neutron.NeutronDriver
+openstack-config --set /etc/trove/trove-taskmanager.conf DEFAULT network_label_regex ".*"
+
+# 6. Edit the /etc/trove/trove-guestagent.conf file so that future trove guests can connect to your OpenStack environment:
+wget -O /etc/trove/trove-guestagent.conf \
+https://raw.githubusercontent.com/openstack/trove/master/etc/trove/trove-guestagent.conf.sample
+openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT rabbit_host controller1
+openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT rabbit_password 123456
+openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT nova_proxy_admin_user admin
+openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT nova_proxy_admin_pass 123456
+openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT nova_proxy_admin_tenant_name service
+openstack-config --set /etc/trove/trove-guestagent.conf DEFAULT trove_auth_url http://controller1:35357/v2.0
+openstack-config --set /etc/trove/trove-guestagent.conf oslo_messaging_rabbit rabbit_host controller1
+openstack-config --set /etc/trove/trove-guestagent.conf oslo_messaging_rabbit rabbit_password 123456
+
+# 7. Populate the trove database you created earlier in this procedure:
+su -s /bin/sh -c "trove-manage db_sync" trove
+
+# Finalize installation
+systemctl enable openstack-trove-api.service \
+  openstack-trove-taskmanager.service \
+  openstack-trove-conductor.service
+systemctl restart openstack-trove-api.service \
+  openstack-trove-taskmanager.service \
+  openstack-trove-conductor.service
+systemctl status openstack-trove-api.service \
+  openstack-trove-taskmanager.service \
+  openstack-trove-conductor.service
+
+# Install and configure the Trove dashboard
+# 1. Installation of the Trove dashboard for Horizon is straightforward. While there packages available for Mitaka, they have a bug which prevents network selection while creating instances. So it is best to install via pip.
+yum install -y python-pip
+pip install trove-dashboard
+pip list | grep trove
+# The command above will install the latest version which is appropriate if you are running the latest Trove. If you are running an earlier version of Trove you may need to specify a compatible version of trove-dashboard. 7.0.0.0b2 is known to work with the Mitaka release of Trove.
+# 2. After pip installs them locate the trove-dashboard directory and copy the contents of the enabled/ directory to your horizon openstack_dashboard/local/enabled/ directory.
+cp /usr/lib/python2.7/site-packages/trove_dashboard/enabled/_*.py \
+ /usr/share/openstack-dashboard/openstack_dashboard/enabled/
+
+# Reload apache to pick up the changes to Horizon.
+systemctl restart httpd.service memcached.service
+systemctl status httpd.service memcached.service
 
 
 ####################################################################################################
